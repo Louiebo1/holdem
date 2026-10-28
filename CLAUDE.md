@@ -31,6 +31,16 @@ table/online/worker scheme, same Firebase project).
 - `js/online.js` — Firebase (`hearts-659fc`) at `/tables/holdem-CODE`, seats ×6 or ×9;
   same scheme as 500: drop → pause (not for players already knocked out), host may let a
   bot play, host takeover with the epoch guard.
+- `js/handstats.js` — the statistics (Louie 2026-10-28, "do all"): results (finishes by place
+  at 6 / 9 seats, last 10, win streaks), style (VPIP, PFR, aggression, went to showdown, won
+  at showdown → "You play most like… the Shark" by nearest `STYLE_PROFILES`), hands made by
+  the river + best hand, all-ins with bad beats / lucky escapes (equity when the chips went
+  in, `allInEquity`), starting hands (dealt / won / net big blinds per "AKs"), rivals (who
+  knocked me out / whom I knocked out, by bot style — recorded only at game over so styles
+  stay secret; `game.knockedOutBy`). `normalize` refills parts Firebase drops. The
+  Statistics screen in main.js has tabs Results · Style · Hands · Starting · Rivals.
+  `STYLE_PROFILES` come from `jsc tests/args.js -m tests/styles.js -- 600 6 7` (+ 300 9 8),
+  averaged; remeasure when the bots change.
 - `js/sounds.js` — snap, deal, knock (check), chips (bets), fanfare.
 - `js/main.js` — start (Continue Game, Back to Table, 6/9 switch), friends, waiting room,
   table (seats around an oval in % of the table area with me at the bottom, chips and
@@ -51,7 +61,7 @@ table/online/worker scheme, same Firebase project).
   start coming up blank), headless Chrome with its own `--user-data-dir` and `?noworker`.
   Chrome won't make a window narrower than ~500 px: for phone sizes load the page in a
   402×874 (or 874×402) iframe from a scratch page. URL options: `?name=X`, `?play`,
-  `?autoplay`, `?foldtest` (my seat folds every hand: the Continue screen), `?fast`,
+  `?autoplay` (`&record` to count it in the statistics), `?foldtest` (my seat folds every hand: the Continue screen), `?fast`,
   `?nine`, `?newtable=CODE&startafter=N`, `?t=CODE`. Online: simulators' Safari via
   `xcrun simctl openurl` (iPhone `?newtable=TZxx&startafter=2&autoplay`, iPad
   `?t=TZxx&autoplay`); delete TZ* tables after (`DELETE /tables/holdem-TZxx.json?auth=…`,

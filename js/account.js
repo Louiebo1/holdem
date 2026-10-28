@@ -103,7 +103,10 @@ async function start() {
 /** Numbers: the larger of the two (so stats from before signing in are never lost or doubled). */
 function mergeMax(a, b) {
   if (typeof a === 'number' && typeof b === 'number') return Math.max(a, b);
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && a.length >= (Array.isArray(b) ? b.length : 0) ? a : b;
   if (a && b && typeof a === 'object' && typeof b === 'object') {
+    // A "best ever" record ({ rank, … }): keep the better one whole.
+    if (typeof a.rank === 'number' && typeof b.rank === 'number') return a.rank >= b.rank ? a : b;
     const out = {};
     for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) out[k] = k in a && k in b ? mergeMax(a[k], b[k]) : (k in a ? a[k] : b[k]);
     return out;

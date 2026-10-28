@@ -6,6 +6,7 @@ import { ORDER, COMBOS, percentile } from '../js/preflop.js';
 import * as G from '../js/game.js';
 import { Bot, STYLE_NAMES, settings } from '../js/bot.js';
 import { newTableState, applyMove, nextHostStep } from '../js/table.js';
+import { blankLine, normalize, recordHand, recordFinish, recordRivals, allInEquity, styleNumbers, closestStyle } from '../js/handstats.js';
 
 let failures = 0, checks = 0;
 function check(ok, what) {
@@ -180,6 +181,59 @@ const game = (players, seed = 1) => G.newGame(players, seeded(seed));
   applyMove(s, { type: 'continue', seat: 0, hand: g.handNumber });
   const after = nextHostStep(s);
   check(after.delay < 5000, 'deals soon after continue');
+}
+
+// Statistics (handstats.js)
+{
+  // Aces against kings, all in before the flop: about 82%.
+  const g = game(2);
+  const a = g.button, b = g.bigBlindSeat;
+  const holes = [[], []];
+  holes[a] = cards('As Ah'); holes[b] = cards('Kc Kd');
+  G.rig(g, holes, cards('2c 7d 9h 3s Kh'));
+  G.apply(g, { type: 'raise', to: 1500 }, a);
+  G.apply(g, { type: 'call' }, b);
+  const equity = allInEquity(g, a, seeded(5));
+  check(equity > 0.78 && equity < 0.86, `aces vs kings equity ${equity}`);
+  const line = blankLine();
+  recordHand(line, g, a, 123, seeded(6));
+  eq(line.allIns, { won: 0, lost: 1, badBeats: 1, lucky: 0 }, 'bad beat counted');
+  eq(line.worstBeat.hole, cards('As Ah'), 'worst beat hole cards');
+  eq(line.starts.AA, { n: 1, w: 0, bb: -75 }, 'aces lost 75 big blinds');
+  eq(line.made.c1, 1, 'made a pair');
+  const kings = blankLine();
+  recordHand(kings, g, b, 123, seeded(6));
+  eq([kings.allIns.lucky, kings.made.c3, kings.bestHand.date], [1, 1, 123], 'lucky kings made trips');
+  eq(g.knockedOutBy, { [a]: b }, 'who knocked out whom');
+  recordRivals(kings, g, b, () => 'rock');
+  recordRivals(line, g, a, () => 'shark');
+  eq([kings.rivals.outed, line.rivals.outBy], [{ rock: 1 }, { shark: 1 }], 'rivals');
+  recordFinish(kings, 1, 6, 5); recordFinish(kings, 1, 6, 6); recordFinish(kings, 4, 9, 7);
+  eq([kings.played, kings.won, kings.bestStreak, kings.streak, kings.finishes.six.p1, kings.finishes.nine.p4, kings.recent.length],
+    [3, 2, 2, 0, 2, 1, 3], 'finishes');
+  // Firebase drops empty objects: normalize fills them back in.
+  const back = normalize(JSON.parse(JSON.stringify({ played: 3, style: { dealt: 4 }, recent: { 0: { place: 1 } } })));
+  eq([back.played, back.style.dealt, back.style.vpip, back.finishes.six, back.recent.length, back.rivals.outBy], [3, 4, 0, {}, 1, {}], 'normalize');
+}
+// Every bot's numbers over a tournament: sane, and a style comes out.
+{
+  settings.trials = 60;
+  const rng = seeded(31);
+  const g = G.newGame(6, rng);
+  const bots = STYLE_NAMES.map((style) => new Bot({ style }));
+  const lines = bots.map(() => blankLine());
+  while (g.phase !== 'gameOver') {
+    if (g.phase === 'handOver') { G.nextHand(g, rng); continue; }
+    G.apply(g, bots[g.turn].move(g, g.turn, rng), g.turn);
+    if (g.result) lines.forEach((l, i) => recordHand(l, g, i, 0, rng));
+  }
+  for (const l of lines) {
+    const st = l.style;
+    check(st.pfr <= st.vpip && st.vpip <= st.dealt && st.wtsd <= st.sawFlop && st.wsd <= st.wtsd, 'style counts in order');
+    check(Object.values(l.starts).reduce((t, h) => t + h.n, 0) === st.dealt, 'every hand dealt has a starting hand');
+  }
+  const most = lines.reduce((a, b) => (a.style.dealt > b.style.dealt ? a : b));
+  check(styleNumbers(most) && closestStyle(most), 'a style for the longest survivor');
 }
 
 print(`${checks - failures}/${checks} checks passed`);

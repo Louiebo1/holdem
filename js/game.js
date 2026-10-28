@@ -26,7 +26,7 @@ export function newGame(players, rng = mathRandom, startingChips = STARTING_CHIP
     button: rng.below(players), smallBlindSeat: 0, bigBlindSeat: 0, turn: 0,
     currentBet: 0, minRaise: 0, fullRaiseLevel: 0, handNumber: 0,
     handsPerLevel: handsPerLevel || handsPerLevelFor(players),
-    actions: [], preflopAggressor: null, result: null, revealed: [], runoutFrom: null, knockedOut: [],
+    actions: [], preflopAggressor: null, result: null, revealed: [], runoutFrom: null, knockedOut: [], knockedOutBy: {},
     tendencies: Array.from({ length: players }, blankTendencies), vpipThisHand: [], pfrThisHand: [],
     humanSeats: [0], botStyles: {},
   };
@@ -324,6 +324,12 @@ function endHand(g) {
   const busted = g.seats.map((s, i) => (s.inHand && s.chips === 0 && !s.out ? i : -1)).filter((i) => i >= 0)
     .sort((a, b) => g.seats[a].startChips - g.seats[b].startChips);
   for (const s of busted) { g.seats[s].out = true; g.knockedOut.push(s); }
+  // Who knocked each one out: the winner of the last pot they were in (for the statistics).
+  g.knockedOutBy ||= {};
+  for (const s of busted) {
+    const lastPot = [...g.result.pots].reverse().find((p) => p.eligible.includes(s));
+    if (lastPot && lastPot.winners.length) g.knockedOutBy[s] = lastPot.winners[0];
+  }
   g.result.busted = busted;
   g.phase = playersLeft(g).length <= 1 ? 'gameOver' : 'handOver';
 }

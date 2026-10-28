@@ -283,3 +283,56 @@ table.stats td:first-child { text-align: left; opacity: 0.85; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Statistics (handstats.js) */
+.stats-panel { width: min(94vw, 520px); }
+.stats-view { text-align: left; }
+.stats-kind { margin-bottom: 8px; }
+.stats-kind button { font-size: 14px; padding: 7px 8px; }
+.stat-tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 10px; border-bottom: 1px solid #fff2; scrollbar-width: none; }
+.stat-tabs button { flex: 1 1 auto; background: none; border-radius: 10px 10px 0 0; padding: 8px 4px; font-size: 14px; min-width: 0; opacity: 0.75; box-shadow: none; border-bottom: 3px solid transparent; }
+.stat-tabs button.on { opacity: 1; border-bottom-color: var(--gold); color: var(--gold); }
+.stat-page { min-height: 260px; }
+.stat-heading { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; margin: 16px 0 6px; font-weight: 700; }
+.stat-empty { opacity: 0.75; text-align: center; padding: 30px 10px; margin: 0; }
+.stat-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.stat-tile { background: rgba(0, 0, 0, 0.25); border-radius: 12px; padding: 8px 4px; text-align: center; display: flex; flex-direction: column; gap: 2px; }
+.stat-tile b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.stat-tile span { font-size: 11px; opacity: 0.8; line-height: 1.2; }
+.bars { display: flex; flex-direction: column; gap: 4px; }
+.bar-row { display: grid; grid-template-columns: 3em 1fr 2.5em; align-items: center; gap: 8px; font-size: 13px; }
+.bar-row.wide { grid-template-columns: 7.5em 1fr 2.5em; }
+.bar-row .bar { height: 14px; background: rgba(0, 0, 0, 0.25); border-radius: 7px; overflow: hidden; }
+.bar-row .bar i { display: block; height: 100%; background: #9fd9a8; border-radius: 7px; min-width: 2px; }
+.bar-row.first .bar i { background: var(--gold); }
+.bar-row .bar-n { text-align: right; font-variant-numeric: tabular-nums; }
+.recent { display: flex; flex-wrap: wrap; gap: 5px; }
+.recent-place { background: rgba(0, 0, 0, 0.3); border-radius: 10px; padding: 4px 7px; font-weight: 700; font-size: 14px; text-align: center; line-height: 1.1; }
+.recent-place small { display: block; font-weight: 400; font-size: 10px; opacity: 0.75; }
+.recent-place.won { background: var(--gold); color: #3a2a00; }
+.recent-place.podium { background: rgba(255, 255, 255, 0.22); }
+.like { background: rgba(0, 0, 0, 0.28); border: 1px solid #f2c75966; border-radius: 14px; padding: 12px; text-align: center; display: flex; flex-direction: column; gap: 3px; }
+.like small { opacity: 0.8; }
+.like b { font-size: 24px; color: var(--gold); font-family: Georgia, serif; }
+.like span { font-size: 13px; opacity: 0.9; line-height: 1.35; }
+.meter { padding: 9px 0; border-bottom: 1px solid #fff1; }
+.meter-top { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
+.meter-top span { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meter-about { font-size: 12px; opacity: 0.75; line-height: 1.35; margin-top: 2px; }
+.mini-cards { --cw: 30px; display: inline-flex; gap: 3px; }
+.best-hand { display: flex; flex-direction: column; align-items: center; gap: 6px; background: rgba(0, 0, 0, 0.25); border-radius: 14px; padding: 10px; }
+.best-hand b { font-size: 16px; text-align: center; }
+.best-hand .mini-cards { --cw: 38px; }
+.best-hand small { opacity: 0.7; }
+.made { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; }
+.made-row { display: flex; justify-content: space-between; font-size: 14px; padding: 3px 0; border-bottom: 1px solid #fff1; }
+.made-row.none { opacity: 0.45; }
+.beat { background: rgba(0, 0, 0, 0.25); border-radius: 14px; padding: 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.beat-title { font-weight: 700; font-size: 14px; }
+.beat-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.beat-who { font-size: 12px; opacity: 0.75; min-width: 2.6em; }
+.beat-odds { font-size: 14px; color: var(--gold); }
+table.stats.starts th { text-align: right; }
+table.stats.starts td:first-child { font-weight: 700; opacity: 1; }
+.plus { color: #8cf28c; }
+.minus { color: #ff8073; }

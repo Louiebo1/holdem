@@ -10,11 +10,14 @@ import { newTableState, LocalHost, BOT_NAMES, PACE, revealTime, waitingToContinu
 import { OnlineTable, onlineAvailable } from './online.js';
 import { syncGame, pushName, pushStats, accountPanel, accountLobby, statsNote, account } from './account.js';
 import { think } from './think.js';
+import { blankLine, normalize, recordHand, recordFinish, recordRivals, styleNumbers, closestStyle, STYLE_PROFILES } from './handstats.js';
 import { play as playSound, sound, unlockSound } from './sounds.js';
 
 const app = document.getElementById('app');
-// For checking the page: ?name=X, ?play, ?autoplay, ?foldtest, ?fast, ?nine, ?newtable=CODE&startafter=N.
+// For checking the page: ?name=X, ?play, ?autoplay (?record: into the stats), ?foldtest, ?fast, ?nine, ?newtable=CODE&startafter=N.
 const params = new URLSearchParams(location.search);
+// Test players (?autoplay, ?foldtest) don't count in the statistics, unless ?record.
+const recording = () => params.has('record') || (!params.has('autoplay') && !params.has('foldtest'));
 
 // MARK: Remembered on this device
 
@@ -47,9 +50,9 @@ const savedGame = {
   set: (s) => store('hw.local', s),
 };
 
-// Statistics, kept on this device (the app's lines, without iCloud).
-const blankLine = () => ({ played: 0, won: 0, podium: 0, placeSum: 0, hands: 0, handsWon: 0, showdownsWon: 0, biggestPot: 0, knockouts: 0 });
-const stats = stored('hw.stats', null) || { computer: blankLine(), online: blankLine() };
+// Statistics (handstats.js), on this device and with the Google sign-in when signed in.
+const savedStats = stored('hw.stats', null) || {};
+const stats = { computer: normalize(savedStats.computer), online: normalize(savedStats.online) };
 const saveStats = () => { store('hw.stats', stats); pushStats(); };
 
 const myName = () => settings.name || 'Player';
@@ -147,7 +150,7 @@ const later = [];
 
 function resetUI() {
   Object.assign(ui, { raising: false, raiseTo: 0, hint: null, thinkingHint: false, banner: null, bannerShown: null, reveal: null,
-    holdResultUntil: 0, boardShown: 0, sentAt: null, prev: null, recorded: false, overlayKey: null, fast: false });
+    holdResultUntil: 0, boardShown: 0, sentAt: null, prev: null, recorded: false, rivalsRecorded: false, overlayKey: null, fast: false });
   later.splice(0).forEach(clearTimeout);
 }
 
@@ -401,7 +404,7 @@ function update() {
   if (newHand) {
     if (old) playSound('deal');
     Object.assign(ui, { reveal: null, holdResultUntil: 0, boardShown: 0, hint: null, raising: false });
-    if (newGame) { ui.recorded = false; ui.fast = false; }
+    if (newGame) { ui.recorded = false; ui.rivalsRecorded = false; ui.fast = false; }
     if (old && !newGame && G.bigBlind(g) > G.bigBlind(old)) showBanner({ title: 'Blinds up', detail: `${fmt(G.smallBlind(g))} / ${fmt(G.bigBlind(g))}` });
   }
   if (old && !newHand) {
@@ -425,27 +428,26 @@ function update() {
   const place = G.place(g, ui.me);
   if (place !== null && !ui.recorded && old) {
     ui.recorded = true;
-    if (!params.has('autoplay') && !params.has('foldtest')) {
-      const line = stats[isOnline() ? 'online' : 'computer'];
-      line.played += 1; line.placeSum += place;
-      if (place === 1) line.won += 1; else if (place <= 3) line.podium += 1;
+    if (recording()) {
+      recordFinish(stats[isOnline() ? 'online' : 'computer'], place, g.seats.length);
       saveStats();
     }
     if (place === 1) playSound('fanfare', Math.max(0, ui.holdResultUntil - now) / 1000);
     if (place > 1 && !isOnline()) ui.fast = true;
+  }
+  if (g.phase === 'gameOver' && !ui.rivalsRecorded && old && recording()) {
+    ui.rivalsRecorded = true;
+    const rivalOf = (s) => (state.seats[s].kind === 'bot' && !state.seats[s].standIn && g.botStyles[s]) || 'friend';
+    recordRivals(stats[isOnline() ? 'online' : 'computer'], g, ui.me, rivalOf);
+    saveStats();
   }
   ui.prev = JSON.parse(JSON.stringify(g));
 }
 
 function handEnded(g) {
   const r = g.result, me = ui.me;
-  if (g.seats[me].inHand && !params.has('autoplay') && !params.has('foldtest')) {
-    const line = stats[isOnline() ? 'online' : 'computer'];
-    const won = r.won[me] || 0;
-    line.hands += 1;
-    if (won - g.seats[me].committed > 0) { line.handsWon += 1; if (r.showdown) line.showdownsWon += 1; }
-    line.biggestPot = Math.max(line.biggestPot, won);
-    if (won > 0) line.knockouts += r.busted.filter((s) => s !== me).length;
+  if (g.seats[me].inHand && recording()) {
+    recordHand(stats[isOnline() ? 'online' : 'computer'], g, me);
     saveStats();
   }
   const at = Math.max(Date.now(), ui.holdResultUntil);
@@ -866,26 +868,228 @@ function showSettings(after) {
   popup('Settings', form, [['Done', 'primary', done]], done);
 }
 
-function showStats() {
-  const pct = (part, whole) => (whole ? `${Math.round((100 * part) / whole)}%` : '–');
-  const rows = [
-    ['Tournaments', (l) => l.played], ['Won', (l) => `${l.won} (${pct(l.won, l.played)})`], ['2nd or 3rd', (l) => l.podium],
-    ['Average finish', (l) => (l.played ? (l.placeSum / l.played).toFixed(1) : '–')], ['Hands played', (l) => fmt(l.hands)],
-    ['Hands won', (l) => `${fmt(l.handsWon)} (${pct(l.handsWon, l.hands)})`], ['At a showdown', (l) => fmt(l.showdownsWon)],
-    ['Players knocked out', (l) => l.knockouts], ['Biggest pot', (l) => fmt(l.biggestPot)],
-  ];
+// The Statistics screen: vs the Computer / with Friends, and five pages (handstats.js).
+const statsView = { kind: null, tab: 'results' };
+const STAT_TABS = [['results', 'Results'], ['style', 'Style'], ['hands', 'Hands'], ['starts', 'Starting'], ['rivals', 'Rivals']];
+const MADE = [['royal', 'Royal Flush'], ['c8', 'Straight Flush'], ['c7', 'Four of a Kind'], ['c6', 'Full House'], ['c5', 'Flush'],
+  ['c4', 'Straight'], ['c3', 'Three of a Kind'], ['c2', 'Two Pair'], ['c1', 'Pair']];
+const PAIRS = ['AA', 'KK', 'QQ', 'JJ', 'TT', '99', '88', '77', '66', '55', '44', '33', '22'];
+const rivalName = (k) => (k === 'friend' ? 'A friend' : STYLES[k] ? STYLES[k].title.replace(/^the/, 'The') : k);
+const dateText = (ms) => (ms ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: new Date(ms).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : '');
+const pctText = (part, whole) => (whole ? `${Math.round((100 * part) / whole)}%` : '–');
+const handText = (label) => label.replace(/T/g, '10');
+
+function miniCards(cards) {
+  const row = el('div', 'mini-cards');
+  for (const c of cards) row.appendChild(cardEl(c));
+  return row;
+}
+
+function statTiles(items) {
+  const row = el('div', 'stat-tiles');
+  for (const [value, title] of items) row.appendChild(el('div', 'stat-tile', `<b>${value}</b><span>${title}</span>`));
+  return row;
+}
+
+function statTable(rows) {
   const t = el('table', 'stats');
-  t.appendChild(el('tr', '', '<th></th><th>vs the Computer</th><th>with Friends</th>'));
-  for (const [name, f] of rows) t.appendChild(el('tr', '', `<td>${name}</td><td>${f(stats.computer)}</td><td>${f(stats.online)}</td>`));
-  const body = el('div');
-  body.appendChild(t);
-  body.appendChild(el('div', 'note', statsNote()));
-  popup('Statistics', body, [
+  for (const [name, value] of rows) t.appendChild(el('tr', '', `<td>${name}</td><td>${value}</td>`));
+  return t;
+}
+
+const statHeading = (text) => el('h3', 'stat-heading', text);
+const statEmpty = (text) => el('p', 'stat-empty', text);
+
+const STAT_PAGES = {
+  results(l) {
+    const page = el('div');
+    if (!l.played && !l.hands) return statEmpty('No tournaments yet. Your results show up here after your first one.');
+    page.appendChild(statTiles([[l.played, 'Tournaments'], [`${l.won}`, `Won · ${pctText(l.won, l.played)}`],
+      [l.played ? (l.placeSum / l.played).toFixed(1) : '–', 'Average finish'], [l.bestStreak, 'Best win streak']]));
+    for (const [key, seats] of [['six', 6], ['nine', 9]]) {
+      const f = l.finishes[key] || {};
+      const total = Object.values(f).reduce((a, b) => a + b, 0);
+      if (!total) continue;
+      page.appendChild(statHeading(`Where you finish · ${seats} players`));
+      const most = Math.max(...Object.values(f));
+      const bars = el('div', 'bars');
+      for (let p = 1; p <= seats; p++) {
+        const n = f['p' + p] || 0;
+        bars.appendChild(el('div', 'bar-row' + (p === 1 ? ' first' : ''),
+          `<span class="bar-label">${ordinal(p)}</span><span class="bar"><i style="width:${most ? (100 * n) / most : 0}%"></i></span><span class="bar-n">${n}</span>`));
+      }
+      page.appendChild(bars);
+    }
+    if (l.recent.length) {
+      page.appendChild(statHeading('Last 10 tournaments'));
+      const row = el('div', 'recent');
+      for (const r of l.recent) row.appendChild(el('span', 'recent-place' + (r.place === 1 ? ' won' : r.place <= 3 ? ' podium' : ''), `${ordinal(r.place)}<small>of ${r.of}</small>`));
+      page.appendChild(row);
+      if (l.streak > 1) page.appendChild(el('div', 'note', `${l.streak} wins in a row right now!`));
+    }
+    page.appendChild(statHeading('Hands'));
+    page.appendChild(statTable([['Hands played', fmt(l.hands)], ['Hands won', `${fmt(l.handsWon)} (${pctText(l.handsWon, l.hands)})`],
+      ['Won at a showdown', fmt(l.showdownsWon)], ['Players you knocked out', fmt(l.knockouts)], ['Biggest pot', fmt(l.biggestPot)]]));
+    return page;
+  },
+
+  style(l) {
+    const page = el('div');
+    const n = styleNumbers(l);
+    if (!n || n.wtsd === null) {
+      const left = Math.max(1, 30 - l.style.dealt);
+      return statEmpty(`Play ${left} more hand${left === 1 ? '' : 's'} and you'll see how you play — and which bot you play most like.`);
+    }
+    const like = closestStyle(l);
+    if (like) {
+      const card = el('div', 'like');
+      card.innerHTML = `<small>You play most like…</small><b>${STYLES[like].title}</b><span>${STYLES[like].blurb}</span>`;
+      page.appendChild(card);
+    }
+    const range = (k) => {
+      const v = Object.values(STYLE_PROFILES).map((p) => p[k]);
+      return [Math.min(...v), Math.max(...v)];
+    };
+    const word = (v, [lo, hi], low, mid, high) => (v < lo ? low : v > hi ? high : mid);
+    const meters = [
+      ['Hands you play', n.vpip, 'vpip', 'How often you put chips in before the flop, instead of folding.', ['Tight', 'In between', 'Loose'], true],
+      ['Hands you raise', n.pfr, 'pfr', 'How often you raise before the flop.', ['Cautious', 'In between', 'Pushy'], true],
+      ['Aggression', n.aggression, 'aggression', 'Bets and raises for every call, after the flop.', ['Calls a lot', 'Balanced', 'Bets a lot'], false],
+      ['Go to a showdown', n.wtsd, 'wtsd', 'Of the flops you see, how often you stay to the end.', ['Lets go', 'In between', 'Sticks around'], true],
+    ];
+    for (const [title, v, key, about, words, isPct] of meters) {
+      const [lo, hi] = range(key);
+      const show = isPct ? `${Math.round(v * 100)}%` : v.toFixed(1);
+      const botText = isPct ? `${Math.round(lo * 100)}–${Math.round(hi * 100)}%` : `${lo.toFixed(1)}–${hi.toFixed(1)}`;
+      page.appendChild(el('div', 'meter', `<div class="meter-top"><b>${title}</b><span>${show} · ${word(v, [lo, hi], ...words)}</span></div><div class="meter-about">${about} The bots: ${botText}.</div>`));
+    }
+    page.appendChild(statTable([['Hands dealt', fmt(l.style.dealt)], ['Flops seen', `${fmt(l.style.sawFlop)} (${pctText(l.style.sawFlop, l.style.dealt)})`],
+      ['Showdowns won', `${fmt(l.style.wsd)} of ${fmt(l.style.wtsd)} (${pctText(l.style.wsd, l.style.wtsd)})`]]));
+    return page;
+  },
+
+  hands(l) {
+    const page = el('div');
+    if (!l.bestHand && !l.allIns.won && !l.allIns.lost) return statEmpty('Play some hands to the river and your best ones show up here.');
+    if (l.bestHand) {
+      page.appendChild(statHeading('Your best hand'));
+      const best = el('div', 'best-hand');
+      best.appendChild(el('b', '', handName(l.bestHand.rank)));
+      best.appendChild(miniCards(l.bestHand.cards));
+      best.appendChild(el('small', '', dateText(l.bestHand.date)));
+      page.appendChild(best);
+    }
+    page.appendChild(statHeading('Hands you made by the river'));
+    const made = el('div', 'made');
+    for (const [key, name] of MADE) {
+      const n = l.made[key] || 0;
+      if (!n && (key === 'royal' || key === 'c8')) continue;
+      made.appendChild(el('div', 'made-row' + (n ? '' : ' none'), `<span>${name}</span><b>${fmt(n)}</b>`));
+    }
+    page.appendChild(made);
+    const a = l.allIns;
+    if (a.won || a.lost) {
+      page.appendChild(statHeading('All-ins'));
+      page.appendChild(statTiles([[a.won, 'Won'], [a.lost, 'Lost'], [a.badBeats, 'Bad beats'], [a.lucky, 'Lucky escapes']]));
+      page.appendChild(el('div', 'note', 'A bad beat: you lost when you were 60% or more to win as the chips went in. A lucky escape: you won when you were 40% or less.'));
+      const story = (memo, title, chance) => {
+        const box = el('div', 'beat');
+        box.appendChild(el('div', 'beat-title', `${title} · ${dateText(memo.date)}`));
+        const row = el('div', 'beat-row');
+        row.appendChild(el('span', 'beat-who', 'You'));
+        row.appendChild(miniCards(memo.hole));
+        for (const them of memo.them.slice(0, 2)) { row.appendChild(el('span', 'beat-who', 'vs')); row.appendChild(miniCards(them)); }
+        box.appendChild(row);
+        const board = el('div', 'beat-row');
+        board.appendChild(el('span', 'beat-who', 'Board'));
+        board.appendChild(miniCards(memo.board));
+        box.appendChild(board);
+        box.appendChild(el('div', 'beat-odds', chance));
+        return box;
+      };
+      if (l.worstBeat) page.appendChild(story(l.worstBeat, 'Your worst beat', `You were ${Math.round(l.worstBeat.rank * 100)}% to win — and lost.`));
+      if (l.luckiest) page.appendChild(story(l.luckiest, 'Your luckiest escape', `You were only ${Math.round((1 - l.luckiest.rank) * 100)}% to win — and won.`));
+    }
+    return page;
+  },
+
+  starts(l) {
+    const page = el('div');
+    const entries = Object.entries(l.starts);
+    if (!entries.length) return statEmpty('Your starting hands show up here once you’ve played a few.');
+    page.appendChild(statHeading('Pocket pairs'));
+    const t = el('table', 'stats starts');
+    t.appendChild(el('tr', '', '<th></th><th>Dealt</th><th>Won</th><th>Big blinds</th>'));
+    const bbText = (v) => `<span class="${v > 0 ? 'plus' : v < 0 ? 'minus' : ''}">${v > 0 ? '+' : ''}${v.toFixed(1)}</span>`;
+    let anyPair = false;
+    for (const p of PAIRS) {
+      const h = l.starts[p];
+      if (!h) continue;
+      anyPair = true;
+      t.appendChild(el('tr', '', `<td>${handText(p)}</td><td>${h.n}</td><td>${pctText(h.w, h.n)}</td><td>${bbText(h.bb)}</td>`));
+    }
+    if (anyPair) page.appendChild(t); else page.appendChild(statEmpty('No pocket pairs yet.'));
+    const enough = entries.filter(([, h]) => h.n >= 3);
+    const name = (k) => `${handText(k.slice(0, 2))}${k.length === 3 ? (k[2] === 's' ? ' suited' : ' offsuit') : ''}`;
+    const list = (title, items) => {
+      if (!items.length) return;
+      page.appendChild(statHeading(title));
+      const lt = el('table', 'stats starts');
+      for (const [k, h] of items) lt.appendChild(el('tr', '', `<td>${name(k)}</td><td>${h.n} dealt</td><td>${bbText(h.bb)}</td>`));
+      page.appendChild(lt);
+    };
+    const sorted = enough.slice().sort((a, b) => b[1].bb - a[1].bb);
+    list('Your best starting hands', sorted.filter(([, h]) => h.bb > 0).slice(0, 5));
+    list('Your worst starting hands', sorted.filter(([, h]) => h.bb < 0).reverse().slice(0, 5));
+    page.appendChild(el('div', 'note', enough.length
+      ? 'Chips won or lost with each hand, in big blinds (so early and late hands count the same). Best and worst need 3 or more of a hand.'
+      : 'Best and worst starting hands show up once you’ve had a hand 3 times.'));
+    return page;
+  },
+
+  rivals(l) {
+    const page = el('div');
+    const by = Object.entries(l.rivals.outBy).sort((a, b) => b[1] - a[1]);
+    const outed = Object.entries(l.rivals.outed).sort((a, b) => b[1] - a[1]);
+    if (!by.length && !outed.length) return statEmpty('Finish a tournament to see your rivals: who knocks you out, and whom you knock out.');
+    const list = (title, items, none) => {
+      page.appendChild(statHeading(title));
+      if (!items.length) { page.appendChild(statEmpty(none)); return; }
+      const most = items[0][1];
+      const bars = el('div', 'bars');
+      for (const [k, n] of items) bars.appendChild(el('div', 'bar-row wide', `<span class="bar-label">${rivalName(k)}</span><span class="bar"><i style="width:${(100 * n) / most}%"></i></span><span class="bar-n">${n}</span>`));
+      page.appendChild(bars);
+    };
+    list('Who knocked you out', by, 'Nobody yet!');
+    list('Whom you knocked out', outed, 'Nobody yet.');
+    if (by.length) page.appendChild(el('div', 'note', `Your toughest rival: ${rivalName(by[0][0]).replace(/^The/, 'the')}.`));
+    return page;
+  },
+};
+
+function showStats() {
+  if (!statsView.kind) statsView.kind = !stats.computer.hands && stats.online.hands ? 'online' : 'computer';
+  const body = el('div', 'stats-view');
+  const draw = () => {
+    body.replaceChildren();
+    const sw = el('div', 'switch stats-kind');
+    for (const [k, title] of [['computer', 'vs the Computer'], ['online', 'with Friends']]) {
+      sw.appendChild(button(title, statsView.kind === k ? 'on' : '', () => { statsView.kind = k; draw(); }));
+    }
+    const tabs = el('div', 'stat-tabs');
+    for (const [k, title] of STAT_TABS) tabs.appendChild(button(title, statsView.tab === k ? 'on' : '', () => { statsView.tab = k; draw(); }));
+    const page = el('div', 'stat-page');
+    page.appendChild(STAT_PAGES[statsView.tab](stats[statsView.kind]));
+    body.append(sw, tabs, page, el('div', 'note', statsNote()));
+  };
+  draw();
+  const o = popup('Statistics', body, [
     ['Reset', '', () => confirmThen('Reset Statistics?', `Every tournament and hand recorded ${account.signedIn ? 'with your Google sign-in' : 'on this device'} is forgotten.`, 'Reset', () => {
       stats.computer = blankLine(); stats.online = blankLine(); saveStats();
     })],
     ['Done', 'primary'],
   ]);
+  o.querySelector('.panel').classList.add('stats-panel');
 }
 
 function showRules() {
@@ -913,7 +1117,7 @@ syncGame({
     for (const b of document.querySelectorAll('.lobby .name button')) b.textContent = n;
   },
   stats: () => stats,
-  setStats: (s) => { stats.computer = Object.assign(blankLine(), s.computer); stats.online = Object.assign(blankLine(), s.online); store('hw.stats', stats); },
+  setStats: (s) => { stats.computer = normalize(s.computer); stats.online = normalize(s.online); store('hw.stats', stats); },
 });
 if (params.get('name')) { settings.name = params.get('name').slice(0, 16); saveSettings(); }
 if (params.has('fast')) Object.assign(PACE, { bot: 20, handPause: 60, showdownPause: 60, revealStart: 10, street: 10, revealEnd: 10, fastBot: 20, fastPause: 40 });
