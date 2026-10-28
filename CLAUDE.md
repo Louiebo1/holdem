@@ -25,9 +25,9 @@ table/online/worker scheme, same Firebase project).
 - `js/think.js` + `js/worker.js` — bots think in a module Web Worker (`?noworker` = page).
 - `js/table.js` — table state (game + seats + paused + `continued`, `handEndedAt`,
   `continueDeadline`), `applyMove`, `nextHostStep` + `Pacer` (the app's pacing: bot 0.9 s,
-  hand 2.4 s / showdown 4.5 s, the all-in board a street at a time; after a hand a person
-  folded, the next one waits until every such person taps Continue, or 60 s — Louie
-  2026-10-28; once every person is out the bots play fast), `LocalHost`.
+  hand 2.4 s / showdown 4.5 s, the all-in board a street at a time; after every hand a person
+  was dealt into (folded, won or lost), the next one waits until they tap Continue, or 60 s —
+  Louie 2026-10-28; once every person is out the bots play fast), `LocalHost`.
 - `js/online.js` — Firebase (`hearts-659fc`) at `/tables/holdem-CODE`, seats ×6 or ×9;
   same scheme as 500: drop → pause (not for players already knocked out), host may let a
   bot play, host takeover with the epoch guard.
@@ -46,8 +46,8 @@ table/online/worker scheme, same Firebase project).
   table (seats around an oval in % of the table area with me at the bottom, chips and
   dealer button toward the middle, board + pot + result in the middle; your cards and the
   Fold / Check-Call / Bet-Raise buttons below — in a column on the right on a sideways
-  phone; raise panel Min/½/¾/Pot/All In + slider), Continue + countdown after a hand you
-  folded (everyone still in shows you their cards), watching after you're out (Fast /
+  phone; raise panel Min/½/¾/Pot/All In + slider), Continue + countdown after every hand you
+  were in (after a fold everyone still in shows you their cards), watching after you're out (Fast /
   Normal), final standings with styles, menu, settings, statistics, How to Play.
   localStorage `hw.settings`, `hw.stats`, `hw.local`, `hw.table`. Names go through `esc()`.
 

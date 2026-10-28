@@ -525,9 +525,9 @@ function feltArea(g, now) {
   area.appendChild(el('div', 'felt'));
   const center = el('div', 'center');
   const total = g.result ? g.result.pots.reduce((a, p) => a + p.amount, 0) : G.pot(g);
-  center.appendChild(el('div', 'pot' + (total ? '' : ' hidden'), `Pot ${fmt(total)}`));
+  // When the hand is over, the pot says who won it and with what (Louie, 2026-10-28).
+  center.appendChild(resultShowing(g) ? resultLine(g) : el('div', 'pot' + (total ? '' : ' hidden'), `Pot ${fmt(total)}`));
   center.appendChild(boardEl(g, now));
-  center.appendChild(resultLine(g));
   area.appendChild(center);
   g.seats.forEach((s, i) => {
     if (s.bet > 0) at(area.appendChild(el('div', 'chips', `<i></i>${fmt(s.bet)}`)), toward(seatSpot(i), 0.4));
@@ -627,7 +627,6 @@ function boardEl(g, now) {
 
 function resultLine(g) {
   const box = el('div', 'result-line');
-  if (!resultShowing(g)) return box;
   const r = g.result;
   r.pots.forEach((p, i) => {
     const names = p.winners.map(who);
@@ -1097,7 +1096,7 @@ function showRules() {
     <p><b>A tournament.</b> Everyone starts with ${fmt(G.STARTING_CHIPS)} chips. The blinds start at 10 / 20 and go up every 10 hands (12 at nine players). Lose all your chips and you're out; the last player with chips wins.</p>
     <p><b>Each hand</b> you get two cards of your own. Five shared cards come out in the middle: three (the flop), then one (the turn), then one more (the river). Your hand is the best five of your two and the five shared.</p>
     <p><b>Betting</b> goes round to the left before the flop and after each new card. Fold (give up the hand), check (pass when nobody has bet), call (match the bet), or bet / raise. A raise must be at least as big as the last one. You can go all in any time: if you're all in and others keep betting, the extra chips go into a side pot you can't win.</p>
-    <p><b>The showdown.</b> Whoever is left after the river turns their cards up; the best hand takes the pot. If everyone else folds, the last player takes it without showing. After a hand you folded, everyone still in shows you their cards — tap Continue when you've seen them (or the next hand deals in a minute).</p>
+    <p><b>The showdown.</b> Whoever is left after the river turns their cards up; the best hand takes the pot. If everyone else folds, the last player takes it without showing. After each hand you were dealt into, tap Continue when you're ready (or the next hand deals in a minute). If you folded, everyone still in shows you their cards.</p>
     <p><b>Hands</b>, best first: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair, high card.</p>
     <p><b>The bots</b> each play a secret style — tight, loose, tricky, pushy… You'll find out who was who when the game ends.</p>`);
   popup('How to Play', body, [['Got It', 'primary']]);

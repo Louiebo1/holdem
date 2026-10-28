@@ -126,9 +126,9 @@ input:focus { outline: 2px solid var(--gold); }
 .board .card.turned { animation: turn 0.4s ease-out; }
 .board .card.winner { box-shadow: 0 0 0 2.5px var(--gold), 0 0 10px var(--gold); }
 @keyframes turn { from { transform: rotateY(90deg) scale(0.6); opacity: 0; } }
-.result-line { min-height: 24px; text-align: center; }
-.result-line.shown { background: rgba(0, 0, 0, 0.55); border-radius: 12px; padding: 6px 12px; animation: pop 0.3s ease-out; }
-.result-line .main { font-weight: 700; }
+.result-line { text-align: center; max-width: 100%; }
+.result-line.shown { background: rgba(0, 0, 0, 0.6); border: 2px solid var(--gold); border-radius: 14px; padding: 6px 14px; animation: pop 0.3s ease-out; box-shadow: 0 0 12px rgba(0, 0, 0, 0.4); }
+.result-line .main { font-weight: 800; font-size: 17px; color: var(--gold); }
 .result-line .side { font-size: 12px; font-weight: 700; opacity: 0.9; }
 
 .seat { position: absolute; transform: translate(-50%, -50%) scale(var(--seat-scale, 1)); display: flex; flex-direction: column; align-items: center; gap: 2px; z-index: 2; transition: opacity 0.25s; }

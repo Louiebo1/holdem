@@ -12,8 +12,8 @@ export const BOT_NAMES = ['Maggie', 'Ray', 'June', 'Walt', 'Dot', 'Frank', 'Ruth
   'Ida', 'Earl', 'Pearl', 'Mac', 'Vera', 'Stan', 'Lou', 'Nell', 'Otis', 'Fay', 'Dan', 'Terry', 'Darlene', 'Sal', 'Rosie', 'Vic'];
 
 /** The app's pacing (ms): a bot's move; a finished hand on show (a showdown longer); after an
- *  all-in the board comes out a street at a time; after a hand you folded the next one waits
- *  for Continue, up to a minute (Louie, 2026-10-28). Faster once every person is out. */
+ *  all-in the board comes out a street at a time; after every hand a person was dealt into, the
+ *  next one waits for their Continue, up to a minute (Louie, 2026-10-28: folded or won). Faster once every person is out. */
 export const PACE = { bot: 900, handPause: 2400, showdownPause: 4500, revealStart: 900, street: 1100, revealEnd: 600,
   continueWait: 60000, fastBot: 150, fastPause: 800 };
 
@@ -44,7 +44,7 @@ export function waitingToContinue(state) {
   if (g.phase !== 'handOver') return [];
   return peopleSeats(state).filter((s) => {
     const seat = g.seats[s];
-    return seat.inHand && seat.folded && !seat.out && !state.continued.includes(s);
+    return seat.inHand && !seat.out && !state.continued.includes(s);
   });
 }
 

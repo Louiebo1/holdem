@@ -183,6 +183,22 @@ const game = (players, seed = 1) => G.newGame(players, seeded(seed));
   check(after.delay < 5000, 'deals soon after continue');
 }
 
+// A hand I won (everyone folded to me) waits for me too (Louie, 2026-10-28).
+{
+  const seats = [{ kind: 'person', name: 'Me' }, ...Array.from({ length: 5 }, (_, i) => ({ kind: 'bot', name: 'B' + i }))];
+  const s = newTableState(seats, 6);
+  const g = s.game;
+  while (g.phase === 'betting') {
+    const seat = g.turn;
+    applyMove(s, seat === 0 ? { type: G.canCheck(g, seat) ? 'check' : 'call', seat } : { type: 'fold', seat });
+  }
+  check(!g.seats[0].folded && g.result.won[0] > 0, 'I won the hand');
+  const step = nextHostStep(s);
+  check(step && step.move.type === 'deal' && step.delay > 50000, 'a win waits for me to continue');
+  applyMove(s, { type: 'continue', seat: 0, hand: g.handNumber });
+  check(nextHostStep(s).delay < 5000, 'deals soon after continue (won)');
+}
+
 // Statistics (handstats.js)
 {
   // Aces against kings, all in before the flop: about 82%.
