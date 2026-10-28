@@ -59,7 +59,7 @@ table/online/worker scheme, same Firebase project).
   played together.
 
 ## Deploy
-Not published yet (2026-10-28). Plan, like the others: GitHub Pages from `main` (repo
+Published 2026-10-28: GitHub Pages from `main` (repo
 Louiebo1/holdem, public) → https://louiebo1.github.io/holdem/, plus a tile on
 `~/code/cardgames-home`. GitHub CLI: `~/bin/gh` (logged in as Louiebo1).
 
