@@ -13,25 +13,24 @@
 // someone else took over can't write over the game.
 
 import { firebaseConfig } from './firebase-config.js';
+import { firebase, playerId, account } from './account.js';
 import { applyMove, newTableState, Pacer, BOT_NAMES, shuffledList } from './table.js';
 
-const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const PREFIX = 'holdem-';
 export const onlineAvailable = () => Boolean(firebaseConfig && firebaseConfig.apiKey);
 
 let fb = null;      // { db, uid, api }
 
+// The Firebase sign-in is shared with Google sign-in (account.js): anonymous unless the
+// person signed in with Google. Signing in or out gets a fresh id for the next table (a
+// table already open keeps the one it has).
+let signedIn = account.signedIn;
+account.watch(() => { if (account.signedIn !== signedIn) { signedIn = account.signedIn; if (fb) fb.stale = true; } });
+
 async function connect() {
-  if (fb) return fb;
-  const [appMod, authMod, dbMod] = await Promise.all([
-    import(SDK + 'firebase-app.js'), import(SDK + 'firebase-auth.js'), import(SDK + 'firebase-database.js'),
-  ]);
-  const app = appMod.initializeApp(firebaseConfig);
-  const auth = authMod.getAuth(app);
-  // Anonymous sign-in: no account for players; the same browser keeps the same id, which
-  // is how a dropped player gets their own seat back.
-  if (!auth.currentUser) await authMod.signInAnonymously(auth);
-  fb = { db: dbMod.getDatabase(app), uid: auth.currentUser.uid, api: dbMod };
+  if (fb && !fb.stale) return fb;
+  const { db, D } = await firebase();
+  fb = { db, uid: await playerId(), api: D };
   return fb;
 }
 
