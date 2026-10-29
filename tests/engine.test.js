@@ -183,6 +183,32 @@ const game = (players, seed = 1) => G.newGame(players, seeded(seed));
   check(after.delay < 5000, 'deals soon after continue');
 }
 
+// The hand that knocks me out waits for me, even though only bots are left (Louie, 2026-10-28).
+{
+  const seats = [{ kind: 'person', name: 'Me' }, ...Array.from({ length: 5 }, (_, i) => ({ kind: 'bot', name: 'B' + i }))];
+  const s = newTableState(seats, 6);
+  const g = s.game;
+  // Everyone gets the same small stack; I hold 7-2 against aces, and we both go all in.
+  const holes = g.seats.map(() => []);
+  holes[0] = cards('7c 2d');
+  const other = (g.turn + 1) % 6 === 0 ? (g.turn + 2) % 6 : (g.turn + 1) % 6;
+  holes[other] = cards('As Ah');
+  G.rig(g, holes, cards('Kd Qs 9h 5c 3s'));
+  let moves = 0;
+  while (g.phase === 'betting' && moves++ < 50) {
+    const seat = g.turn;
+    if (seat === 0 || seat === other) {
+      const all = { type: 'raise', seat, to: G.maxRaiseTo(g, seat) };
+      applyMove(s, G.canApply(g, all, seat) ? all : { type: G.canCheck(g, seat) ? 'check' : 'call', seat });
+    } else applyMove(s, { type: G.canCheck(g, seat) ? 'check' : 'fold', seat });
+  }
+  check(g.result && g.result.busted.includes(0), 'I got knocked out');
+  const step = nextHostStep(s);
+  check(step && step.move.type === 'deal' && step.delay > 50000, 'the knockout hand waits for me');
+  applyMove(s, { type: 'continue', seat: 0, hand: g.handNumber });
+  check(nextHostStep(s).delay < 5000, 'then the bots carry on');
+}
+
 // A hand I won (everyone folded to me) waits for me too (Louie, 2026-10-28).
 {
   const seats = [{ kind: 'person', name: 'Me' }, ...Array.from({ length: 5 }, (_, i) => ({ kind: 'bot', name: 'B' + i }))];

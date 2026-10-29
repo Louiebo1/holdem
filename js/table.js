@@ -44,7 +44,9 @@ export function waitingToContinue(state) {
   if (g.phase !== 'handOver') return [];
   return peopleSeats(state).filter((s) => {
     const seat = g.seats[s];
-    return seat.inHand && !seat.out && !state.continued.includes(s);
+    // Including the hand that knocked them out: they get to see it (Louie, 2026-10-28).
+    const bustedNow = !!g.result && g.result.busted.includes(s);
+    return seat.inHand && (!seat.out || bustedNow) && !state.continued.includes(s);
   });
 }
 
@@ -105,8 +107,8 @@ export function nextHostStep(state) {
       const deal = { type: 'deal', hand: g.handNumber };
       const ended = state.handEndedAt || Date.now();
       const shown = ended + revealTime(g);
-      if (fast) return { delay: Math.max(0, shown + PACE.fastPause - Date.now()), move: deal };
       if (waitingToContinue(state).length) return { delay: Math.max(0, state.continueDeadline - Date.now()), move: deal };
+      if (fast) return { delay: Math.max(0, shown + PACE.fastPause - Date.now()), move: deal };
       const pause = g.result && g.result.showdown ? PACE.showdownPause : PACE.handPause;
       // Everyone who folded has tapped Continue: deal after a short beat.
       const done = state.continued.length ? Math.min(shown + pause, Date.now() + 400) : shown + pause;

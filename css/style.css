@@ -130,6 +130,8 @@ input:focus { outline: 2px solid var(--gold); }
 .felt-area.nine .result-line { max-width: 58%; }
 .result-line .hand-name { font-weight: 700; font-size: 15px; }
 .result-line .hand-name.small { font-size: 12px; opacity: 0.9; }
+.result-line.pots .main { font-size: 14px; }
+.result-line.pots .hand-name { font-size: 12px; }
 .result-line.fresh { animation: pop 0.3s ease-out; }
 .result-line.shown { background: rgba(0, 0, 0, 0.6); border: 2px solid var(--gold); border-radius: 14px; padding: 6px 14px; box-shadow: 0 0 12px rgba(0, 0, 0, 0.4); }
 .result-line .main { font-weight: 800; font-size: 17px; color: var(--gold); }

@@ -14,10 +14,10 @@ import { blankLine, normalize, recordHand, recordFinish, recordRivals, styleNumb
 import { play as playSound, sound, unlockSound } from './sounds.js';
 
 const app = document.getElementById('app');
-// For checking the page: ?name=X, ?play, ?autoplay (?record: into the stats), ?foldtest, ?fast, ?nine, ?newtable=CODE&startafter=N.
+// For checking the page: ?name=X, ?play, ?autoplay (?record: into the stats), ?foldtest, ?shovetest, ?fast, ?nine, ?newtable=CODE&startafter=N.
 const params = new URLSearchParams(location.search);
 // Test players (?autoplay, ?foldtest) don't count in the statistics, unless ?record.
-const recording = () => params.has('record') || (!params.has('autoplay') && !params.has('foldtest'));
+const recording = () => params.has('record') || (!params.has('autoplay') && !params.has('foldtest') && !params.has('shovetest'));
 
 // MARK: Remembered on this device
 
@@ -149,7 +149,7 @@ const ui = {
 const later = [];
 
 function resetUI() {
-  Object.assign(ui, { raising: false, raiseTo: 0, hint: null, thinkingHint: false, banner: null, bannerShown: null, reveal: null,
+  Object.assign(ui, { raising: false, raiseTo: 0, hint: null, thinkingHint: false, banner: null, bannerShown: null, reveal: null, finalSeen: null,
     holdResultUntil: 0, boardShown: 0, sentAt: null, prev: null, recorded: false, rivalsRecorded: false, overlayKey: null, fast: false });
   later.splice(0).forEach(clearTimeout);
 }
@@ -243,13 +243,14 @@ function playComputer(saved = null) {
   }
   ui.me = 0;
   resetUI();
-  const keep = !params.has('autoplay') && !params.has('foldtest');
+  const keep = !params.has('autoplay') && !params.has('foldtest') && !params.has('shovetest');
   host = new LocalHost(s, (next) => {
     state = next;
     if (keep) savedGame.set(next.game.phase === 'gameOver' ? null : next);
     update();
     render();
     testFold();
+    testShove();
   });
 }
 
@@ -330,6 +331,25 @@ function testFold() {
   const g = state.game;
   if (g.phase === 'betting' && g.turn === ui.me && !state.paused) {
     setTimeout(() => { if (isMyTurn(state.game)) perform({ type: G.canCheck(g, ui.me) ? 'check' : 'fold' }); }, 300);
+  }
+}
+
+// Testing the knockout hand and See Results: ?shovetest goes all in every hand, and taps
+// Continue by itself except on the hand that knocks me out.
+function testShove() {
+  if (!params.has('shovetest') || !state) return;
+  const g = state.game;
+  if (g.phase === 'betting' && g.turn === ui.me && !state.paused) {
+    setTimeout(() => {
+      const now = state.game;
+      if (!isMyTurn(now)) return;
+      const all = { type: 'raise', to: G.maxRaiseTo(now, ui.me) };
+      perform(G.canApply(now, { ...all, seat: ui.me }, ui.me) ? all : { type: G.canCheck(now, ui.me) ? 'check' : 'call' });
+    }, 300);
+  } else if (g.phase === 'handOver' && g.result && !g.result.busted.includes(ui.me)) {
+    // After the board has come out.
+    const hand = g.handNumber;
+    setTimeout(() => { if (canContinue() && state.game.handNumber === hand) host.send({ type: 'continue', seat: ui.me, hand }); }, revealTime(g) + 600);
   }
 }
 
@@ -493,7 +513,7 @@ function render() {
 
   let overlay = null, key = null;
   if (state.paused && state.paused.seat !== me) { overlay = pausedPanel(); key = 'paused'; }
-  else if (g.phase === 'gameOver' && !revealing()) { overlay = finalPanel(g); key = `final:${g.handNumber}`; }
+  else if (g.phase === 'gameOver' && !revealing() && finalReady(g)) { overlay = finalPanel(g); key = `final:${g.handNumber}`; }
   if (overlay) {
     if (key === ui.overlayKey) overlay.classList.add('still');
     screen.appendChild(overlay);
@@ -626,8 +646,8 @@ function boardEl(g, now) {
 }
 
 function resultLine(g) {
-  const box = el('div', 'result-line');
   const r = g.result;
+  const box = el('div', 'result-line' + (r.pots.length > 1 ? ' pots' : ''));
   r.pots.forEach((p, i) => {
     const names = p.winners.map(who);
     const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
@@ -667,6 +687,19 @@ function myCards(g) {
 function controls(g) {
   const box = el('div', 'controls');
   const me = ui.me, s = g.seats[me];
+  if (g.phase === 'gameOver' && resultShowing(g) && !finalReady(g)) {
+    box.appendChild(button('See Results', 'primary big-action', () => { ui.finalSeen = g.handNumber; render(); }));
+    return box;
+  }
+  if (canContinue()) {
+    box.appendChild(button('Continue', 'primary big-action', () => host.send({ type: 'continue', seat: me, hand: g.handNumber })));
+    if (state.continueDeadline) {
+      const left = Math.max(0, Math.ceil((state.continueDeadline - Date.now()) / 1000));
+      box.appendChild(el('div', 'note', `Next hand in ${left} seconds`));
+      redrawAt(Date.now() + 1000);
+    }
+    return box;
+  }
   if (s.out && g.phase !== 'gameOver') {
     box.appendChild(el('div', 'status-line', `You finished ${ordinal(G.place(g, me) || 0)} — watching the rest`));
     const row = el('div', 'row');
@@ -677,15 +710,6 @@ function controls(g) {
     if (!isOnline() || host.isHost) row.appendChild(button('New Game', 'primary', () => host.send({ type: 'newGame' })));
     row.appendChild(button('Leave', '', leaveTable));
     box.appendChild(row);
-    return box;
-  }
-  if (canContinue()) {
-    box.appendChild(button('Continue', 'primary big-action', () => host.send({ type: 'continue', seat: me, hand: g.handNumber })));
-    if (state.continueDeadline) {
-      const left = Math.max(0, Math.ceil((state.continueDeadline - Date.now()) / 1000));
-      box.appendChild(el('div', 'note', `Next hand in ${left} seconds`));
-      redrawAt(Date.now() + 1000);
-    }
     return box;
   }
   if (isMyTurn(g) && !waitingOnHost()) {
@@ -800,6 +824,9 @@ function applySpeed() {
 // MARK: Overlays
 
 /** The end of the tournament: where everyone finished, and each bot's secret style. */
+/** The last hand stays on the table until I tap See Results (Louie, 2026-10-28). */
+const finalReady = (g) => ui.finalSeen === g.handNumber || params.has('autoplay');
+
 function finalPanel(g) {
   const myPlace = G.place(g, ui.me);
   const body = el('div', 'final');
@@ -1131,5 +1158,5 @@ const tableCode = params.get('t') || params.get('newtable');
 if (tableCode && onlineAvailable()) {
   const go = () => (params.get('newtable') ? withTable(OnlineTable.create(myName(), onTableUpdate, tableCode, settings.players)) : joinTable(tableCode));
   if (settings.name) go(); else askName(go);
-} else if (params.has('play') || params.has('autoplay') || params.has('foldtest')) playComputer();
+} else if (params.has('play') || params.has('autoplay') || params.has('foldtest') || params.has('shovetest')) playComputer();
 else showLobby();

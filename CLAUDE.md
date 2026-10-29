@@ -26,8 +26,9 @@ table/online/worker scheme, same Firebase project).
 - `js/table.js` — table state (game + seats + paused + `continued`, `handEndedAt`,
   `continueDeadline`), `applyMove`, `nextHostStep` + `Pacer` (the app's pacing: bot 0.9 s,
   hand 2.4 s / showdown 4.5 s, the all-in board a street at a time; after every hand a person
-  was dealt into (folded, won or lost), the next one waits until they tap Continue, or 60 s —
-  Louie 2026-10-28; once every person is out the bots play fast), `LocalHost`.
+  was dealt into (folded, won or lost, and above all the hand that knocks them out), the next
+  one waits until they tap Continue, or 60 s — Louie 2026-10-28; the tournament's last hand
+  stays up until See Results; once every person is out the bots play fast), `LocalHost`.
 - `js/online.js` — Firebase (`hearts-659fc`) at `/tables/holdem-CODE`, seats ×6 or ×9;
   same scheme as 500: drop → pause (not for players already knocked out), host may let a
   bot play, host takeover with the epoch guard.
@@ -61,7 +62,7 @@ table/online/worker scheme, same Firebase project).
   start coming up blank), headless Chrome with its own `--user-data-dir` and `?noworker`.
   Chrome won't make a window narrower than ~500 px: for phone sizes load the page in a
   402×874 (or 874×402) iframe from a scratch page. URL options: `?name=X`, `?play`,
-  `?autoplay` (`&record` to count it in the statistics), `?foldtest` (my seat folds every hand: the Continue screen), `?fast`,
+  `?autoplay` (`&record` to count it in the statistics), `?foldtest` (my seat folds every hand: the Continue screen), `?shovetest` (my seat goes all in every hand: the knockout hand waits, then See Results), `?fast`,
   `?nine`, `?newtable=CODE&startafter=N`, `?t=CODE`. Online: simulators' Safari via
   `xcrun simctl openurl` (iPhone `?newtable=TZxx&startafter=2&autoplay`, iPad
   `?t=TZxx&autoplay`); delete TZ* tables after (`DELETE /tables/holdem-TZxx.json?auth=…`,
