@@ -640,6 +640,9 @@ function resultLine(g) {
     if (hand) box.appendChild(el('div', 'hand-name' + (i === 0 ? '' : ' small'), hand));
   });
   box.classList.add('shown');
+  // Pop in once per hand, not on every redraw (the countdown redraws each second).
+  const key = `${g.handNumber}`;
+  if (ui.resultPopped !== key) { box.classList.add('fresh'); ui.resultPopped = key; }
   return box;
 }
 
