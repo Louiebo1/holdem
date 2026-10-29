@@ -633,7 +633,11 @@ function resultLine(g) {
     const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
     const verb = names.length > 1 ? 'split' : p.winners[0] === ui.me ? 'win' : 'wins';
     const which = r.pots.length > 1 ? (i === 0 ? ' the main pot' : ' a side pot') : '';
-    box.appendChild(el('div', i === 0 ? 'main' : 'side', `${list} ${verb}${which} ${fmt(p.amount)}${p.hand ? ` · ${p.hand}` : ''}`));
+    // The winning hand, whenever the winner's cards are face up to me (Louie, 2026-10-28).
+    const w = p.winners[0];
+    const hand = p.hand || (p.winners.length === 1 && ((r.showdown && r.shown.includes(w)) || showsCards(g, w)) ? madeHand(g, w) : null);
+    box.appendChild(el('div', i === 0 ? 'main' : 'side', `${list} ${verb}${which} ${fmt(p.amount)}`));
+    if (hand) box.appendChild(el('div', 'hand-name' + (i === 0 ? '' : ' small'), hand));
   });
   box.classList.add('shown');
   return box;
