@@ -147,7 +147,7 @@ const LIKELIHOOD = {
 };
 
 /** Standard opening ranges by the number of players still to act behind. */
-function openRange(behind, headsUp) {
+export function openRange(behind, headsUp) {
   if (headsUp) return 0.8;
   const table = [1.0, 0.45, 0.42, 0.28, 0.22, 0.17, 0.14, 0.12, 0.11, 0.1];
   return table[Math.min(behind, table.length - 1)];

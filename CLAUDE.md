@@ -19,10 +19,20 @@ table/online/worker scheme, same Firebase project).
   `{ type: 'raise', to }`; illegal moves throw `IllegalMove`.
 - `js/bot.js` — the app's `Bot`, line for line: six styles (Rock, Shark, Trapper, Grinder,
   Bully, Reader), opponent ranges weighted by their betting, Monte Carlo equity (700 deals),
-  push/fold, `advice` for Suggest. Bots see only `playerView`. When the app's bots change,
+  push/fold. Bots see only `playerView`. When the app's bots change,
   port the change here. Each bot gets a random secret style (repeats allowed), revealed at
   game over; a stand-in for a dropped person plays Grinder.
-- `js/think.js` + `js/worker.js` — bots think in a module Web Worker (`?noworker` = page).
+- `js/coach.js` — Learn mode (Louie, 2026-10-30; replaced the Suggest button): a coach always on
+  screen, only vs the computer, from `playerView` only. Sections: your hand (starting-hand rank
+  and tips / made hand in words, outs by kind with % to hit, board dangers), your chances (equity
+  vs likely ranges and vs random, fair share), the math of calling (or bet sizing), your seat /
+  position (what good players open, push or call from here), what their bets mean (current
+  street + observed tendencies after 12 hands — never styles), your stack (BBs, rank, blinds up);
+  advice = the Grinder's move with reasons (`explain`); `review` after each hand marks my
+  decisions ✓/△/✗. Text uses `**bold**`. The app's `Coach.swift` is a line-for-line port —
+  change both. Test: `jsc -m tests/coach.test.js`.
+- `js/think.js` + `js/worker.js` — bots think in a module Web Worker (`?noworker` = page); the
+  coach runs there too (`coachFor`).
 - `js/table.js` — table state (game + seats + paused + `continued`, `handEndedAt`,
   `continueDeadline`), `applyMove`, `nextHostStep` + `Pacer` (the app's pacing: bot 0.9 s,
   hand 2.4 s / showdown 4.5 s, the all-in board a street at a time; after every hand a person
@@ -49,7 +59,11 @@ table/online/worker scheme, same Firebase project).
   Fold / Check-Call / Bet-Raise buttons below — in a column on the right on a sideways
   phone; raise panel Min/½/¾/Pot/All In + slider), Continue + countdown after every hand you
   were in (after a fold everyone still in shows you their cards), watching after you're out (Fast /
-  Normal), final standings with styles, menu, settings, statistics, How to Play.
+  Normal), final standings with styles, menu, settings, statistics, How to Play. Learn panel
+  (`coachPanel`): beside the table when the window is ≥ 900×560, in the buttons' column on a
+  sideways phone, else between the table and the buttons (30vh, scrolls). `state.learn` marks a
+  tournament played with Learn on: `recording()` skips it (Louie: Learn games don't count).
+  Setting `learn` (old `hints` migrates to it); `?learn` turns it on for testing.
   localStorage `hw.settings`, `hw.stats`, `hw.local`, `hw.table`. Names go through `esc()`.
 
 ## Test

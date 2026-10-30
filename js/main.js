@@ -5,19 +5,21 @@
 import * as G from './game.js';
 import { SYMBOL, card, suitOf, rankLabel, rankOf, label, isRedSuit, SPADES } from './cards.js';
 import { evaluate, handName, bestFive } from './evaluator.js';
-import { STYLES, advice } from './bot.js';
+import { STYLES } from './bot.js';
+import { coach, review, moveText } from './coach.js';
 import { newTableState, LocalHost, BOT_NAMES, PACE, revealTime, waitingToContinue, shuffledList } from './table.js';
 import { OnlineTable, onlineAvailable } from './online.js';
 import { syncGame, pushName, pushStats, accountPanel, accountLobby, statsNote, account } from './account.js';
-import { think } from './think.js';
+import { think, coachFor } from './think.js';
 import { blankLine, normalize, recordHand, recordFinish, recordRivals, styleNumbers, closestStyle, STYLE_PROFILES } from './handstats.js';
 import { play as playSound, sound, unlockSound } from './sounds.js';
 
 const app = document.getElementById('app');
-// For checking the page: ?name=X, ?play, ?autoplay (?record: into the stats), ?foldtest, ?shovetest, ?fast, ?nine, ?newtable=CODE&startafter=N.
+// For checking the page: ?name=X, ?play, ?learn, ?autoplay (?record: into the stats), ?foldtest, ?shovetest, ?fast, ?nine, ?newtable=CODE&startafter=N.
 const params = new URLSearchParams(location.search);
 // Test players (?autoplay, ?foldtest) don't count in the statistics, unless ?record.
-const recording = () => params.has('record') || (!params.has('autoplay') && !params.has('foldtest') && !params.has('shovetest'));
+// Learn games (Louie, 2026-10-30: "no") don't count either.
+const recording = () => !(state && state.learn) && (params.has('record') || (!params.has('autoplay') && !params.has('foldtest') && !params.has('shovetest')));
 
 // MARK: Remembered on this device
 
@@ -28,7 +30,9 @@ function store(key, value) {
   try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
-const settings = Object.assign({ name: '', back: 'red', largePrint: false, sounds: true, hints: false, players: 6 }, stored('hw.settings', {}));
+const settings = Object.assign({ name: '', back: 'red', largePrint: false, sounds: true, learn: false, players: 6 }, stored('hw.settings', {}));
+// The Suggest button grew into Learn mode (2026-10-30): whoever had hints on gets Learn.
+if ('hints' in settings) { settings.learn = settings.learn || settings.hints; delete settings.hints; }
 function saveSettings() {
   store('hw.settings', settings);
   pushName(settings.name);
@@ -36,6 +40,7 @@ function saveSettings() {
   sound.on = settings.sounds;
 }
 if (params.has('nine')) settings.players = 9;
+if (params.has('learn')) settings.learn = true;      // Testing Learn mode.
 saveSettings();
 
 const lastTable = {
@@ -135,7 +140,10 @@ let state = null;     // The table state being shown.
 const ui = {
   me: 0,
   raising: false, raiseTo: 0,
-  hint: null, thinkingHint: false,
+  coach: null,           // Learn mode: { key, data } — what the coach says about this moment.
+  coachAsked: null,      // The key last sent to the coach.
+  decisions: [],         // Learn mode: my decisions this hand, for the review.
+  review: null,          // Learn mode: { hand, lines } once the hand is over.
   banner: null, bannerShown: null,
   reveal: null,          // { start, from, hand }: the board coming out a street at a time after an all-in.
   holdResultUntil: 0,    // The result waits until the board is out.
@@ -149,7 +157,7 @@ const ui = {
 const later = [];
 
 function resetUI() {
-  Object.assign(ui, { raising: false, raiseTo: 0, hint: null, thinkingHint: false, banner: null, bannerShown: null, reveal: null, finalSeen: null,
+  Object.assign(ui, { raising: false, raiseTo: 0, coach: null, coachAsked: null, decisions: [], review: null, banner: null, bannerShown: null, reveal: null, finalSeen: null,
     holdResultUntil: 0, boardShown: 0, sentAt: null, prev: null, recorded: false, rivalsRecorded: false, overlayKey: null, fast: false });
   later.splice(0).forEach(clearTimeout);
 }
@@ -159,6 +167,63 @@ function redrawAt(time) {
 }
 
 const isOnline = () => host instanceof OnlineTable;
+
+// MARK: Learn mode (Louie, 2026-10-30): coaching always on screen, only against the computer.
+
+const learnOn = () => settings.learn && !!host && !isOnline() && !!state;
+/** What the coach calls each seat: "You", or the name at the table. */
+const coachName = (seat) => (seat === ui.me ? 'You' : state.seats[seat].name);
+/** The moment the coach is about: changes with every move. */
+const coachKey = () => `${state.game.handNumber}:${state.version}`;
+
+/** Ask the coach about this moment (in the background) when it's something new. */
+function askCoach() {
+  const g = state.game, s = g.seats[ui.me];
+  if (!s || !s.inHand || s.folded || s.out || g.phase !== 'betting' || revealing()) return;
+  const key = coachKey();
+  if (ui.coachAsked === key) return;
+  ui.coachAsked = key;
+  coachFor(g, ui.me, state.seats.map((_, i) => coachName(i))).then((data) => {
+    if (!state || coachKey() !== key) return;
+    ui.coach = { key, data };
+    render();
+  });
+}
+
+/** **bold** → bold type; red suits in red. */
+const md = (text) => esc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/([♥♦])/g, '<span class="red-suit">$1</span>');
+
+function coachPanel(g) {
+  const panel = el('aside', 'coach');
+  panel.appendChild(el('div', 'coach-title', '🎓 Learn'));
+  const s = g.seats[ui.me];
+  const section = (title, lines, cls = '') => {
+    const box = el('section', 'coach-section ' + cls);
+    if (title) box.appendChild(el('h4', '', esc(title)));
+    for (const line of lines) box.appendChild(el('p', '', md(line)));
+    panel.appendChild(box);
+  };
+  if (s.out) { section('', ['You’re out of this tournament. Start a new game to keep learning.']); return panel; }
+  if (ui.review && ui.review.hand === g.handNumber && g.result) {
+    section('How that hand went', ui.review.lines, 'review');
+    return panel;
+  }
+  if (!s.inHand) { section('', ['You’re not in this hand.']); return panel; }
+  if (s.folded) {
+    const lines = ['You folded this hand. Watch how the others play it — the review comes when the hand ends.'];
+    section('', lines);
+    return panel;
+  }
+  askCoach();
+  const fresh = ui.coach && ui.coach.key === coachKey();
+  const data = ui.coach && ui.coach.key.startsWith(`${g.handNumber}:`) ? ui.coach.data : null;
+  if (!data) { section('', ['Working out your odds…']); return panel; }
+  if (!fresh) panel.classList.add('updating');
+  if (data.advice && fresh && isMyTurn(g)) section(`A strong player would: ${data.advice.title}`, data.advice.lines, 'advice');
+  else if (isMyTurn(g)) section('Your turn', ['Working out what a strong player would do…'], 'advice');
+  for (const sec of data.sections) section(sec.title, sec.lines);
+  return panel;
+}
 
 function leaveTable() {
   const midGame = isOnline() && host.started && state && state.game.phase !== 'gameOver';
@@ -423,7 +488,7 @@ function update() {
   const newHand = newGame || old.handNumber !== g.handNumber;
   if (newHand) {
     if (old) playSound('deal');
-    Object.assign(ui, { reveal: null, holdResultUntil: 0, boardShown: 0, hint: null, raising: false });
+    Object.assign(ui, { reveal: null, holdResultUntil: 0, boardShown: 0, raising: false, decisions: [], review: null });
     if (newGame) { ui.recorded = false; ui.rivalsRecorded = false; ui.fast = false; }
     if (old && !newGame && G.bigBlind(g) > G.bigBlind(old)) showBanner({ title: 'Blinds up', detail: `${fmt(G.smallBlind(g))} / ${fmt(G.bigBlind(g))}` });
   }
@@ -443,7 +508,7 @@ function update() {
       } else playSound('snap');
     }
     if (g.result && !old.result) handEnded(g);
-    if (g.turn !== old.turn || g.street !== old.street) { ui.hint = null; ui.raising = false; }
+    if (g.turn !== old.turn || g.street !== old.street) ui.raising = false;
   }
   const place = G.place(g, ui.me);
   if (place !== null && !ui.recorded && old) {
@@ -466,6 +531,15 @@ function update() {
 
 function handEnded(g) {
   const r = g.result, me = ui.me;
+  if (learnOn() && g.seats[me].inHand) {
+    for (const d of ui.decisions) {
+      if (!d.game) continue;
+      const c = coach(d.game, me, coachName);
+      if (c) { d.numbers = c.numbers; d.adviceText = moveText(c.numbers.advice, d.game, me); }
+      d.game = null;
+    }
+    ui.review = { hand: g.handNumber, lines: review(g, me, ui.decisions, coachName) };
+  }
   if (g.seats[me].inHand && recording()) {
     recordHand(stats[isOnline() ? 'online' : 'computer'], g, me);
     saveStats();
@@ -494,8 +568,10 @@ function render() {
   if (!state) return;
   const g = state.game, me = ui.me, now = Date.now();
   const size = sizes();
+  // Learn mode on a sideways phone: smaller cards make room for the coach.
+  if (learnOn() && size.sideways && size.w < 900) size.hand = Math.floor(Math.min(size.hand, size.h * 0.15));
   const screen = el('div', 'screen');
-  const table = el('div', 'table' + (size.sideways ? ' sideways' : ''));
+  const table = el('div', 'table' + (size.sideways ? ' sideways' : '') + (learnOn() && size.sideways ? ' learning' : ''));
   table.style.setProperty('--hand-w', size.hand + 'px');
   table.style.setProperty('--seat-scale', size.scale);
   table.style.setProperty('--board-w', Math.floor(Math.min(size.w * (size.sideways ? 0.07 : 0.13), size.h * (size.sideways ? 0.13 : 0.075), 64 * size.scale)) + 'px');
@@ -505,8 +581,23 @@ function render() {
   const bottom = el('div', 'bottom');
   bottom.appendChild(controls(g));
   bottom.appendChild(myCards(g));
+  // Learn mode: beside the table when there's room (Louie: "if there is room bigger screen
+  // use it"), otherwise between the table and the buttons (on a sideways phone, in the
+  // buttons' column), scrolling.
+  const learn = learnOn() ? coachPanel(g) : null;
+  if (learn && g.phase !== 'gameOver') state.learn = true;
+  const wide = size.w >= 900 && size.h >= 560;
+  if (learn && !wide && size.sideways) bottom.appendChild(learn);
+  else if (learn && !wide) table.appendChild(learn);
   table.appendChild(bottom);
   screen.appendChild(table);
+  if (learn && wide) { screen.classList.add('with-coach'); screen.appendChild(learn); }
+  if (learn) {
+    // Keep my place when the panel redraws.
+    const old = app.querySelector('.coach');
+    if (old) learn.scrollTop = old.scrollTop;
+    if (ui.coachScrollKey !== `${g.handNumber}:${g.street}`) { ui.coachScrollKey = `${g.handNumber}:${g.street}`; learn.scrollTop = 0; }
+  }
   const old = app.querySelector(':scope > .screen');
   if (old) old.replaceWith(screen);
   else { app.innerHTML = ''; app.appendChild(screen); }
@@ -714,14 +805,6 @@ function controls(g) {
   }
   if (isMyTurn(g) && !waitingOnHost()) {
     box.appendChild(ui.raising ? raisePanel(g) : actionButtons(g));
-    if (settings.hints) {
-      if (ui.hint) box.appendChild(el('div', 'hint', ui.hint));
-      else {
-        const b = button(ui.thinkingHint ? 'Thinking…' : '💡 Suggest', 'ghost small', suggest);
-        b.disabled = ui.thinkingHint;
-        box.appendChild(b);
-      }
-    }
     return box;
   }
   let status = '';
@@ -794,24 +877,15 @@ function perform(move) {
   if (!isMyTurn(g) || waitingOnHost()) return;
   const full = { ...move, seat: ui.me };
   if (!G.canApply(g, full, ui.me)) return;
-  ui.raising = false; ui.hint = null;
+  ui.raising = false;
+  if (learnOn()) {
+    const c = ui.coach && ui.coach.key === coachKey() ? ui.coach.data : null;
+    // A quick tap before the coach finished: the review works this moment out afterwards.
+    ui.decisions.push({ street: g.street, move: full, text: moveText(full, g, ui.me), adviceText: c && c.numbers.advice ? moveText(c.numbers.advice, g, ui.me) : '',
+      numbers: c ? c.numbers : null, game: c ? null : JSON.parse(JSON.stringify(g)) });
+  }
   if (isOnline() && !host.isHost) { ui.sentAt = state.version; render(); }
   host.send(full);
-}
-
-/** What a steady good player would do here (the app's Suggest). */
-function suggest() {
-  const g = state.game;
-  if (!isMyTurn(g) || ui.thinkingHint) return;
-  ui.thinkingHint = true;
-  render();
-  const version = state.version;
-  setTimeout(() => {
-    const text = advice(g, ui.me);
-    ui.thinkingHint = false;
-    if (state && state.version === version) ui.hint = text;
-    render();
-  }, 30);
 }
 
 /** Watching after I'm out (vs the computer): the bots play quickly, or at normal speed. */
@@ -841,6 +915,7 @@ function finalPanel(g) {
   }
   body.appendChild(list);
   const line = stats[isOnline() ? 'online' : 'computer'];
+  if (state.learn) body.appendChild(el('div', 'note', 'A Learn mode game: not counted in your statistics.'));
   if (line.played) body.appendChild(el('div', 'note', `${line.won} win${line.won === 1 ? '' : 's'} in ${line.played} tournament${line.played === 1 ? '' : 's'} ${isOnline() ? 'with friends' : 'vs the computer'}`));
   const buttons = [];
   if (!isOnline() || host.isHost) buttons.push(button('Play Again', 'primary', () => host.send({ type: 'newGame' })));
@@ -883,7 +958,8 @@ function showSettings(after) {
     <label>Card back <select id="back">${['red', 'green', 'blue', 'black'].map((c) => `<option value="${c}" ${settings.back === c ? 'selected' : ''}>${c[0].toUpperCase() + c.slice(1)}</option>`).join('')}</select></label>
     <label>Large card letters <input type="checkbox" id="large" ${settings.largePrint ? 'checked' : ''}></label>
     <label>Sounds <input type="checkbox" id="sounds" ${settings.sounds ? 'checked' : ''}></label>
-    <label>Suggest button (hints) <input type="checkbox" id="hints" ${settings.hints ? 'checked' : ''}></label>`;
+    <label>Learn mode <input type="checkbox" id="learn" ${settings.learn ? 'checked' : ''}></label>
+    <p class="note setting-note">Learn mode coaches you on every hand: your odds, what bets mean, what a strong player would do, and a review after each hand. Only in games against the computer; those games don't count in your statistics.</p>`;
   form.querySelector('#name').value = settings.name;
   if (state) form.querySelector('.name-setting').remove();
   const done = () => {
@@ -892,8 +968,7 @@ function showSettings(after) {
     settings.back = form.querySelector('#back').value;
     settings.largePrint = form.querySelector('#large').checked;
     settings.sounds = form.querySelector('#sounds').checked;
-    settings.hints = form.querySelector('#hints').checked;
-    if (!settings.hints) ui.hint = null;
+    settings.learn = form.querySelector('#learn').checked;
     saveSettings();
     after?.();
   };
@@ -1132,6 +1207,7 @@ function showRules() {
     <p><b>Betting</b> goes round to the left before the flop and after each new card. Fold (give up the hand), check (pass when nobody has bet), call (match the bet), or bet / raise. A raise must be at least as big as the last one. You can go all in any time: if you're all in and others keep betting, the extra chips go into a side pot you can't win.</p>
     <p><b>The showdown.</b> Whoever is left after the river turns their cards up; the best hand takes the pot. If everyone else folds, the last player takes it without showing. After each hand you were dealt into, tap Continue when you're ready (or the next hand deals in a minute). If you folded, everyone still in shows you their cards.</p>
     <p><b>Hands</b>, best first: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair, high card.</p>
+    <p><b>Learn mode</b> (Settings) coaches you on every hand against the computer: what you have, your chances, the math of calling, what other players' bets mean, what a strong player would do, and a review after each hand. Learn games don't count in your statistics.</p>
     <p><b>The bots</b> each play a secret style — tight, loose, tricky, pushy… You'll find out who was who when the game ends.</p>`);
   popup('How to Play', body, [['Got It', 'primary']]);
 }

@@ -25,7 +25,7 @@ export function newTableState(seats) {
   const game = G.newGame(seats.length);
   game.humanSeats = peopleSeats({ seats });
   seats.forEach((s, i) => { if (s.kind === 'bot') game.botStyles[i] = STYLE_NAMES[Math.floor(Math.random() * STYLE_NAMES.length)]; });
-  return { game, seats, paused: null, version: 0, continued: [], handEndedAt: null, continueDeadline: null };
+  return { game, seats, paused: null, version: 0, continued: [], handEndedAt: null, continueDeadline: null, learn: false };
 }
 
 export const peopleSeats = (state) => state.seats.map((s, i) => (s.kind === 'person' ? i : -1)).filter((i) => i >= 0);
