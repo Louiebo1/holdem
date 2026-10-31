@@ -460,6 +460,7 @@ const seatCount = () => state.game.seats.length;
 const positionOf = (seat) => (seat - ui.me + seatCount()) % seatCount();
 const nameOf = (seat) => esc(state.seats[seat].name) + (state.seats[seat].standIn ? ' (bot)' : '');
 const who = (seat) => (seat === ui.me ? 'You' : nameOf(seat));
+const whoLower = (seat) => (seat === ui.me ? 'you' : nameOf(seat));
 const isMyTurn = (g) => g.phase === 'betting' && g.turn === ui.me && !state.paused && !revealing();
 const waitingOnHost = () => isOnline() && !host.isHost && ui.sentAt !== null && ui.sentAt === state.version;
 const revealing = () => Date.now() < ui.holdResultUntil;
@@ -748,20 +749,44 @@ function boardEl(g, now) {
   return row;
 }
 
+/** "A", "A and B", "A, B and C". */
+const andList = (names) => (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]);
+
+/** Who won the pot, and with what. With side pots, each pot says who could win it and why
+ *  (Louie, 2026-10-31: two winners were confusing). A "pot" only one player is in is chips
+ *  nobody could match: they just go back. */
 function resultLine(g) {
   const r = g.result;
-  const box = el('div', 'result-line' + (r.pots.length > 1 ? ' pots' : ''));
-  r.pots.forEach((p, i) => {
-    const names = p.winners.map(who);
-    const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
-    const verb = names.length > 1 ? 'split' : p.winners[0] === ui.me ? 'win' : 'wins';
-    const which = r.pots.length > 1 ? (i === 0 ? ' the main pot' : ' a side pot') : '';
-    // The winning hand, whenever the winner's cards are face up to me (Louie, 2026-10-28).
-    const w = p.winners[0];
-    const hand = p.hand || (p.winners.length === 1 && ((r.showdown && r.shown.includes(w)) || showsCards(g, w)) ? madeHand(g, w) : null);
-    box.appendChild(el('div', i === 0 ? 'main' : 'side', `${list} ${verb}${which} ${fmt(p.amount)}`));
-    if (hand) box.appendChild(el('div', 'hand-name' + (i === 0 ? '' : ' small'), hand));
-  });
+  const box = el('div', 'result-line');
+  const w = (p) => p.winners[0];
+  const handOf = (p) => p.hand || (p.winners.length === 1 && ((r.showdown && r.shown.includes(w(p))) || showsCards(g, w(p))) ? madeHand(g, w(p)) : null);
+  const verb = (winners) => (winners.length > 1 ? 'split' : winners[0] === ui.me ? 'win' : 'wins');
+  const real = r.pots.filter((p) => p.eligible.length > 1);
+  const back = r.pots.filter((x) => x.eligible.length === 1);
+  const same = r.pots.every((p) => p.winners.join() === r.pots[0].winners.join());
+  if (same || real.length <= 1) {
+    const p = real[0] || r.pots[0];
+    const total = (same ? r.pots : real).reduce((t, x) => t + x.amount, 0);
+    box.appendChild(el('div', 'main', `${andList(p.winners.map(who))} ${verb(p.winners)} ${fmt(total)}`));
+    const hand = handOf(p);
+    if (hand) box.appendChild(el('div', 'hand-name', hand));
+  } else {
+    box.classList.add('pots');
+    real.forEach((p, i) => {
+      const name = i === 0 ? 'Main pot' : real.length > 2 ? `Side pot ${i}` : 'Side pot';
+      const part = el('div', 'pot-part' + (i ? ' side-pot' : ''));
+      part.appendChild(el('div', i === 0 ? 'main' : 'side', `${name} ${fmt(p.amount)} · ${andList(p.winners.map(who))} ${verb(p.winners)}`));
+      const hand = handOf(p);
+      if (hand) part.appendChild(el('div', 'hand-name small', hand));
+      if (i === 0) part.appendChild(el('div', 'why', 'Everyone still in could win it'));
+      else {
+        const allIn = real[i - 1].eligible.filter((s) => !p.eligible.includes(s));
+        part.appendChild(el('div', 'why', `Only ${andList(p.eligible.map(whoLower))} could win it — ${andList(allIn.map(whoLower))} ${allIn.length > 1 || allIn[0] === ui.me ? 'were' : 'was'} all in for less`));
+      }
+      box.appendChild(part);
+    });
+  }
+  if (!same) for (const p of back) box.appendChild(el('div', 'why', `${who(w(p))} ${w(p) === ui.me ? 'get' : 'gets'} back ${fmt(p.amount)} nobody could match`));
   box.classList.add('shown');
   // Pop in once per hand, not on every redraw (the countdown redraws each second).
   const key = `${g.handNumber}`;
@@ -1217,6 +1242,7 @@ function showRules() {
     <p><b>A tournament.</b> Everyone starts with ${fmt(G.STARTING_CHIPS)} chips. The blinds start at 10 / 20 and go up every 10 hands (12 at nine players). Lose all your chips and you're out; the last player with chips wins.</p>
     <p><b>Each hand</b> you get two cards of your own. Five shared cards come out in the middle: three (the flop), then one (the turn), then one more (the river). Your hand is the best five of your two and the five shared.</p>
     <p><b>Betting</b> goes round to the left before the flop and after each new card. Fold (give up the hand), check (pass when nobody has bet), call (match the bet), or bet / raise. A raise must be at least as big as the last one. You can go all in any time: if you're all in and others keep betting, the extra chips go into a side pot you can't win.</p>
+    <p><b>Side pots.</b> If you go all in with fewer chips than the others bet, you can only win as much as you put in from each player. That part is the <b>main pot</b>, and everyone still in can win it. The extra chips the others keep betting go into a <b>side pot</b> that only they can win. Example: Ray goes all in for 200, Ida and Vera each put in 500. The main pot is 600 (200 from each); the side pot is the other 600, between Ida and Vera. At the showdown the best hand of all three takes the main pot, and the better of Ida's and Vera's takes the side pot — so one hand can have two winners. Chips nobody could match just go back to whoever bet them.</p>
     <p><b>The showdown.</b> Whoever is left after the river turns their cards up; the best hand takes the pot. If everyone else folds, the last player takes it without showing. After each hand you were dealt into, tap Continue when you're ready (or the next hand deals in a minute). If you folded, everyone still in shows you their cards.</p>
     <p><b>Hands</b>, best first: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair, high card.</p>
     <p><b>Learn mode</b> (Settings) coaches you on every hand against the computer: what you have, your chances, the math of calling, what other players' bets mean, what a strong player would do, and a review after each hand. Learn games don't count in your statistics.</p>

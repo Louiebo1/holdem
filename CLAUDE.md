@@ -55,7 +55,7 @@ table/online/worker scheme, same Firebase project).
 - `js/sounds.js` — snap, deal, knock (check), chips (bets), fanfare.
 - `js/main.js` — start (Continue Game, Back to Table, 6/9 switch), friends, waiting room,
   table (seats around an oval in % of the table area with me at the bottom, chips and
-  dealer button toward the middle, board + pot + result in the middle; your cards and the
+  dealer button toward the middle, board + pot + result in the middle (with side pots each pot says who could win it and why; a pot only one player is in reads "gets back N nobody could match" — Louie 2026-10-31); your cards and the
   Fold / Check-Call / Bet-Raise buttons below — in a column on the right on a sideways
   phone; raise panel Min/½/¾/Pot/All In + slider), Continue + countdown after every hand you
   were in (after a fold everyone still in shows you their cards), watching after you're out (Fast /

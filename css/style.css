@@ -135,7 +135,9 @@ input:focus { outline: 2px solid var(--gold); }
 .result-line.fresh { animation: pop 0.3s ease-out; }
 .result-line.shown { background: rgba(0, 0, 0, 0.6); border: 2px solid var(--gold); border-radius: 14px; padding: 6px 14px; box-shadow: 0 0 12px rgba(0, 0, 0, 0.4); }
 .result-line .main { font-weight: 800; font-size: 17px; color: var(--gold); }
-.result-line .side { font-size: 12px; font-weight: 700; opacity: 0.9; }
+.result-line .side { font-size: 13px; font-weight: 800; }
+.result-line .pot-part.side-pot { margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.2); }
+.result-line .why { font-size: 11px; opacity: 0.8; line-height: 1.25; }
 
 .seat { position: absolute; transform: translate(-50%, -50%) scale(var(--seat-scale, 1)); display: flex; flex-direction: column; align-items: center; gap: 2px; z-index: 2; transition: opacity 0.25s; }
 .seat.folded { opacity: 0.6; }

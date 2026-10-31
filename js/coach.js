@@ -544,6 +544,17 @@ export function review(g, seat, decisions, nameOf = (s) => `Seat ${s + 1}`) {
         : `If you'd stayed in, your ${handName(me)} would have lost.`);
     } else if (!mine.folded && r.showdown) lines.push(`You had ${showHand(seat)}.`);
   }
+  const real = r.pots.filter((p) => p.eligible.length > 1);
+  if (real.length > 1) {
+    // Side pots, in words (Louie, 2026-10-31).
+    const list = (seats) => { const n = seats.map((s) => (s === seat ? 'you' : nameOf(s))); return n.length > 1 ? n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1] : n[0]; };
+    const cap = (t) => t[0].toUpperCase() + t.slice(1);
+    lines.push(`**Side pots:** someone was all in with fewer chips, so they could only win as much as they put in from each player — the **main pot** (${fmt(real[0].amount)}), won by ${list(real[0].winners)}.`);
+    real.slice(1).forEach((p, i) => {
+      const allIn = real[i].eligible.filter((s) => !p.eligible.includes(s));
+      lines.push(`The extra ${fmt(p.amount)} went into a **side pot** only ${list(p.eligible)} could win (${list(allIn)} ${allIn.length > 1 || allIn[0] === seat ? 'were' : 'was'} all in for less). ${cap(list(p.winners))} won it.`);
+    });
+  }
   const STREETS = ['Before the flop', 'On the flop', 'On the turn', 'On the river'];
   let good = 0;
   for (const d of decisions) {
