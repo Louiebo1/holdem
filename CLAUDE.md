@@ -35,7 +35,7 @@ table/online/worker scheme, same Firebase project).
   coach runs there too (`coachFor`).
 - `js/table.js` — table state (game + seats + paused + `continued`, `handEndedAt`,
   `continueDeadline`), `applyMove`, `nextHostStep` + `Pacer` (the app's pacing: bot 0.9 s,
-  hand 2.4 s / showdown 4.5 s, the all-in board a street at a time; after every hand a person
+  hand 2.4 s / showdown 4.5 s, the all-in board a street at a time; at a showdown the cards are face up 1.2 s (`PACE.flip`) before the result and the Learn review show (Louie 2026-10-31); after every hand a person
   was dealt into (folded, won or lost, and above all the hand that knocks them out), the next
   one waits until they tap Continue, or 60 s — Louie 2026-10-28; the tournament's last hand
   stays up until See Results; once every person is out the bots play fast), `LocalHost`.

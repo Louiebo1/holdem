@@ -204,6 +204,8 @@ function coachPanel(g) {
     panel.appendChild(box);
   };
   if (s.out) { section('', ['You’re out of this tournament. Start a new game to keep learning.']); return panel; }
+  // The review waits for the cards to turn over, like the result does (Louie, 2026-10-31).
+  if (g.result && revealing()) { section('', ['The hand is over — look at the cards. The review comes once the winner shows.']); return panel; }
   if (ui.review && ui.review.hand === g.handNumber && g.result) {
     section('How that hand went', ui.review.lines, 'review');
     return panel;
@@ -469,7 +471,7 @@ function foldedThisHand(g) {
   return s && s.inHand && s.folded && !s.out;
 }
 /** After a hand I folded, everyone still in at the end shows me their cards. */
-const showsCards = (g, seat) => resultShowing(g) && foldedThisHand(g) && G.isLive(g, seat);
+const showsCards = (g, seat) => !!g.result && foldedThisHand(g) && G.isLive(g, seat);
 /** The hand is over, I folded it, and the next one is waiting on me. */
 const canContinue = () => !!state && state.game.phase === 'handOver' && resultShowing(state.game)
   && waitingToContinue(state).includes(ui.me);
@@ -506,6 +508,16 @@ function update() {
         for (let t = PACE.revealStart; t <= revealTime(g); t += PACE.street) redrawAt(now + t);
         redrawAt(ui.holdResultUntil);
       } else playSound('snap');
+    }
+    if (g.result && !old.result && !ui.reveal) {
+      // The cards turn over first, then who won: a showdown, or everyone still in showing me
+      // their cards after I folded.
+      const flip = g.result.showdown ? revealTime(g) : foldedThisHand(g) && g.seats.some((_, i) => i !== ui.me && G.isLive(g, i)) ? PACE.flip : 0;
+      if (flip && !params.has('fast')) {
+        ui.holdResultUntil = now + flip;
+        playSound('snap');
+        redrawAt(ui.holdResultUntil);
+      }
     }
     if (g.result && !old.result) handEnded(g);
     if (g.turn !== old.turn || g.street !== old.street) ui.raising = false;
@@ -1229,7 +1241,7 @@ syncGame({
   setStats: (s) => { stats.computer = normalize(s.computer); stats.online = normalize(s.online); store('hw.stats', stats); },
 });
 if (params.get('name')) { settings.name = params.get('name').slice(0, 16); saveSettings(); }
-if (params.has('fast')) Object.assign(PACE, { bot: 20, handPause: 60, showdownPause: 60, revealStart: 10, street: 10, revealEnd: 10, fastBot: 20, fastPause: 40 });
+if (params.has('fast')) Object.assign(PACE, { bot: 20, handPause: 60, showdownPause: 60, revealStart: 10, street: 10, revealEnd: 10, flip: 10, fastBot: 20, fastPause: 40 });
 const tableCode = params.get('t') || params.get('newtable');
 if (tableCode && onlineAvailable()) {
   const go = () => (params.get('newtable') ? withTable(OnlineTable.create(myName(), onTableUpdate, tableCode, settings.players)) : joinTable(tableCode));

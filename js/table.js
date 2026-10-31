@@ -14,7 +14,7 @@ export const BOT_NAMES = ['Maggie', 'Ray', 'June', 'Walt', 'Dot', 'Frank', 'Ruth
 /** The app's pacing (ms): a bot's move; a finished hand on show (a showdown longer); after an
  *  all-in the board comes out a street at a time; after every hand a person was dealt into, the
  *  next one waits for their Continue, up to a minute (Louie, 2026-10-28: folded or won). Faster once every person is out. */
-export const PACE = { bot: 900, handPause: 2400, showdownPause: 4500, revealStart: 900, street: 1100, revealEnd: 600,
+export const PACE = { bot: 900, handPause: 2400, showdownPause: 4500, revealStart: 900, street: 1100, revealEnd: 600, flip: 1200,
   continueWait: 60000, fastBot: 150, fastPause: 800 };
 
 export const shuffledList = (list) => list.map((x) => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map((e) => e[1]);
@@ -30,11 +30,14 @@ export function newTableState(seats) {
 
 export const peopleSeats = (state) => state.seats.map((s, i) => (s.kind === 'person' ? i : -1)).filter((i) => i >= 0);
 
-/** How long the board takes to come out after an all-in (the result waits for it). */
+/** How long before the result shows: after an all-in the board comes out first; at any other
+ *  showdown the cards turn over first, then who won (Louie, 2026-10-31). */
 export function revealTime(g) {
-  if (g.runoutFrom === null || g.runoutFrom === undefined || !g.result) return 0;
-  const steps = [3, 4, 5].filter((n) => n > g.runoutFrom && n <= g.board.length).length;
-  return steps ? PACE.revealStart + PACE.street * (steps - 1) + PACE.revealEnd : 0;
+  if (!g.result) return 0;
+  const from = g.runoutFrom === null || g.runoutFrom === undefined ? null : g.runoutFrom;
+  const steps = from === null ? 0 : [3, 4, 5].filter((n) => n > from && n <= g.board.length).length;
+  if (steps) return PACE.revealStart + PACE.street * (steps - 1) + PACE.revealEnd;
+  return g.result.showdown ? PACE.flip : 0;
 }
 
 /** People who folded the hand just finished (and are still playing): the next hand waits
