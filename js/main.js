@@ -674,7 +674,7 @@ function feltArea(g, now) {
 function seatEl(g, seat) {
   const s = g.seats[seat], isMe = seat === ui.me;
   const turn = g.phase === 'betting' && g.turn === seat && !revealing();
-  const winner = resultShowing(g) && (g.result.won[seat] || 0) > 0;
+  const winner = resultShowing(g) && G.taken(g.result, seat) > 0;
   const e = el('div', 'seat' + (s.out ? ' out' : s.folded ? ' folded' : '') + (isMe ? ' mine' : ''));
   if (!isMe) {
     const cards = el('div', 'hole');
@@ -697,12 +697,17 @@ function seatTag(g, seat) {
   const s = g.seats[seat];
   const tag = (text, cls) => el('div', 'tag-line', `<span class="tag ${cls}">${text}</span>`);
   if (resultShowing(g)) {
-    const won = g.result.won[seat] || 0;
+    const won = G.taken(g.result, seat), back = G.returned(g.result, seat);
     const shown = (g.result.showdown && g.result.shown.includes(seat)) || showsCards(g, seat);
     const made = shown ? madeHand(g, seat) : null;
     if (won > 0) {
       const box = tag(`Wins ${fmt(won)}`, 'win');
       if (made && !g.result.showdown) box.appendChild(el('span', 'tag dark', made));
+      return box;
+    }
+    if (back > 0) {
+      const box = tag(`Back ${fmt(back)}`, 'dark');
+      if (made) box.appendChild(el('span', 'tag dark', made));
       return box;
     }
     if (made) return tag(made, 'dark');
@@ -766,7 +771,7 @@ function resultLine(g) {
   const same = r.pots.every((p) => p.winners.join() === r.pots[0].winners.join());
   if (same || real.length <= 1) {
     const p = real[0] || r.pots[0];
-    const total = (same ? r.pots : real).reduce((t, x) => t + x.amount, 0);
+    const total = (real.length ? real : r.pots).reduce((t, x) => t + x.amount, 0);
     box.appendChild(el('div', 'main', `${andList(p.winners.map(who))} ${verb(p.winners)} ${fmt(total)}`));
     const hand = handOf(p);
     if (hand) box.appendChild(el('div', 'hand-name', hand));
@@ -786,7 +791,7 @@ function resultLine(g) {
       box.appendChild(part);
     });
   }
-  if (!same) for (const p of back) box.appendChild(el('div', 'why', `${who(w(p))} ${w(p) === ui.me ? 'get' : 'gets'} back ${fmt(p.amount)} nobody could match`));
+  if (real.length) for (const p of back) box.appendChild(el('div', 'why', `${who(w(p))} ${w(p) === ui.me ? 'get' : 'gets'} back ${fmt(p.amount)} nobody could match`));
   box.classList.add('shown');
   // Pop in once per hand, not on every redraw (the countdown redraws each second).
   const key = `${g.handNumber}`;

@@ -530,13 +530,13 @@ export function review(g, seat, decisions, nameOf = (s) => `Seat ${s + 1}`) {
   const r = g.result;
   if (!r) return null;
   const mine = g.seats[seat];
-  const won = r.won[seat] || 0;
+  const won = G.taken(r, seat), back = G.returned(r, seat);
   const showHand = (s) => (g.board.length >= 3 ? handName(evaluate([...g.seats[s].hole, ...g.board])) : null);
   if (won > 0) lines.push(`**You won ${fmt(won)}**${r.showdown ? ` with ${showHand(seat)}` : ' — everyone else folded'}.`);
   else {
-    const w = r.pots[0].winners[0];
+    const w = r.pots.find((p) => p.eligible.length > 1)?.winners[0] ?? r.pots[0].winners[0];
     const theirs = r.showdown ? showHand(w) : null;
-    lines.push(`**${nameOf(w)} won** ${fmt(r.pots[0].amount)}${theirs ? ` with ${theirs}` : ''}.`);
+    lines.push(`**${nameOf(w)} won** ${fmt(G.taken(r, w))}${theirs ? ` with ${theirs}` : ''}.`);
     if (mine.folded && g.board.length === 5 && r.showdown) {
       const me = evaluate([...mine.hole, ...g.board]);
       const best = Math.max(...r.shown.map((s) => evaluate([...g.seats[s].hole, ...g.board])));
@@ -544,6 +544,7 @@ export function review(g, seat, decisions, nameOf = (s) => `Seat ${s + 1}`) {
         : `If you'd stayed in, your ${handName(me)} would have lost.`);
     } else if (!mine.folded && r.showdown) lines.push(`You had ${showHand(seat)}.`);
   }
+  if (back > 0) lines.push(`You got back ${fmt(back)} of your own chips: you bet more than anyone could match, so those weren't in any pot.`);
   const real = r.pots.filter((p) => p.eligible.length > 1);
   if (real.length > 1) {
     // Side pots, in words (Louie, 2026-10-31).

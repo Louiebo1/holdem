@@ -349,3 +349,11 @@ export function rig(g, holes, fullBoard, chips = null) {
   if (fullBoard.length > 4) topCards.push(burns[2], fullBoard[4]);
   g.deck = [...rest, ...topCards.reverse()];
 }
+
+/** Chips handed back after a showdown that nobody could match (a "pot" only that seat was in).
+ *  They're the seat's own chips, not a win (2026-10-31: they showed as "You won 120"). */
+export function returned(r, seat) {
+  return r.showdown ? r.pots.filter((p) => p.eligible.length === 1 && p.eligible[0] === seat).reduce((t, p) => t + p.amount, 0) : 0;
+}
+/** Chips a seat won from the others this hand. */
+export function taken(r, seat) { return (r.won[seat] || 0) - returned(r, seat); }

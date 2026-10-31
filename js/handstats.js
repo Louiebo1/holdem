@@ -84,7 +84,7 @@ export function allInEquity(g, me, rng = Math.random) {
 export function recordHand(line, g, me, now = Date.now(), rng = Math.random) {
   const seat = g.seats[me], r = g.result;
   if (!seat.inHand || !r) return;
-  const won = r.won[me] || 0, net = won - seat.committed;
+  const won = G.taken(r, me), net = (r.won[me] || 0) - seat.committed;
   const bb = G.bigBlind(g);
   const mine = g.actions.filter((a) => a.seat === me);
   const live = !seat.folded;

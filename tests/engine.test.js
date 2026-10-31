@@ -5,6 +5,7 @@ import { evaluate, handName, category } from '../js/evaluator.js';
 import { ORDER, COMBOS, percentile } from '../js/preflop.js';
 import * as G from '../js/game.js';
 import { Bot, STYLE_NAMES, settings } from '../js/bot.js';
+import { review } from '../js/coach.js';
 import { newTableState, applyMove, nextHostStep } from '../js/table.js';
 import { blankLine, normalize, recordHand, recordFinish, recordRivals, allInEquity, styleNumbers, closestStyle } from '../js/handstats.js';
 
@@ -110,6 +111,31 @@ const game = (players, seed = 1) => G.newGame(players, seeded(seed));
   eq([r.pots[1].amount, r.pots[1].winners], [420, [sb]], 'side pot');
   eq([g.seats[button].chips, g.seats[sb].chips], [300, 420], 'chips after');
   eq(g.runoutFrom, 0, 'board ran out from the start');
+}
+// Chips nobody could match go back: not a win (2026-10-31: the review said "You won 690")
+{
+  const g = game(3);
+  const button = g.button, sb = g.smallBlindSeat, bb = g.bigBlindSeat;
+  const holes = [[], [], []];
+  holes[button] = cards('2c 7d'); holes[sb] = cards('As Ad'); holes[bb] = cards('Ks Kd');
+  G.rig(g, holes, cards('3h 8s 9c Jd 4h'), g.seats.map((_, i) => ({ [button]: 1000, [sb]: 300, [bb]: 1000 }[i])));
+  G.apply(g, { type: 'raise', to: 1000 }, button);
+  G.apply(g, { type: 'call' }, sb);
+  G.apply(g, { type: 'fold' }, bb);
+  const r = g.result;
+  check(r.showdown, 'unmatched: showdown');
+  eq(r.pots.map((p) => p.amount), [640, 690], 'unmatched: pots');
+  eq([G.returned(r, button), G.taken(r, button), G.taken(r, sb), G.returned(r, sb)], [690, 0, 640, 0], 'unmatched: returned and taken');
+  const lines = review(g, button, [], (s) => `P${s}`);
+  check(!lines.some((l) => l.includes('You won')) && lines.some((l) => l.includes('won** 640')) && lines.some((l) => l.includes('got back 690')), 'unmatched review: ' + lines.join(' / '));
+  const line = blankLine();
+  recordHand(line, g, button);
+  eq([line.handsWon, line.biggestPot, line.style.wsd], [0, 0, 0], 'unmatched: not a win in the stats');
+  const f = game(3);
+  G.apply(f, { type: 'raise', to: 100 }, f.button);
+  G.apply(f, { type: 'fold' }, f.smallBlindSeat);
+  G.apply(f, { type: 'fold' }, f.bigBlindSeat);
+  eq([G.taken(f.result, f.button), G.returned(f.result, f.button)], [130, 0], 'uncontested win keeps every chip');
 }
 // Split pot
 {
